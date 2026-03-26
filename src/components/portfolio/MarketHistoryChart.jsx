@@ -34,9 +34,16 @@ const DEFAULT_TOGGLES = {
   fibonacci: true,
   rsi: true,
   macd: true,
+  stochastic: true,
   vwap: true,
   volume: true,
   compare: true,
+};
+
+const DEFAULT_SMA_COLORS = {
+  sma20: '#22D3EE',
+  sma50: '#C084FC',
+  sma200: '#34D399',
 };
 
 const DEFAULT_ALERTS = {
@@ -81,6 +88,8 @@ function average(values) {
 
 function buildIndicators(points = []) {
   const closes = points.map((point) => Number(point.close));
+  const highs = points.map((point) => Number(point.high));
+  const lows = points.map((point) => Number(point.low));
   let cumulativeVolume = 0;
   let cumulativeVolumePrice = 0;
   let ema12 = null;
@@ -119,6 +128,8 @@ function buildIndicators(points = []) {
       bollingerUpper: sma20 !== null && deviation20 !== null ? sma20 + (2 * deviation20) : null,
       bollingerLower: sma20 !== null && deviation20 !== null ? sma20 - (2 * deviation20) : null,
       rsi14: null,
+      stochasticK: null,
+      stochasticD: null,
       bullish: point.close >= point.open,
     };
   });
@@ -148,6 +159,24 @@ function buildIndicators(points = []) {
     if (index >= 14 && avgGain !== null && avgLoss !== null) {
       const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
       enriched[index].rsi14 = Number((100 - (100 / (1 + rs))).toFixed(2));
+    }
+  }
+
+  for (let index = 13; index < closes.length; index += 1) {
+    const highWindow = highs.slice(index - 13, index + 1);
+    const lowWindow = lows.slice(index - 13, index + 1);
+    const highestHigh = Math.max(...highWindow);
+    const lowestLow = Math.min(...lowWindow);
+    const denominator = highestHigh - lowestLow;
+    const k = denominator === 0 ? 50 : ((closes[index] - lowestLow) / denominator) * 100;
+    enriched[index].stochasticK = Number(k.toFixed(2));
+
+    const recentK = enriched
+      .slice(Math.max(0, index - 2), index + 1)
+      .map((item) => item.stochasticK)
+      .filter((value) => value !== null);
+    if (recentK.length === 3) {
+      enriched[index].stochasticD = Number(average(recentK).toFixed(2));
     }
   }
 
@@ -259,7 +288,7 @@ function buildCompareSeries(primaryPoints = [], compareSeries = []) {
 
 function CandleShape(props) {
   const {
-    x, width, yAxis, payload,
+    x, width, yAxis, payload, chartType = 'candles',
   } = props;
 
   if (!payload || !yAxis?.scale) return null;
@@ -283,7 +312,9 @@ function CandleShape(props) {
         width={candleWidth}
         height={bodyHeight}
         rx={1.5}
-        fill={color}
+        fill={chartType === 'hollow' && payload.bullish ? 'transparent' : color}
+        stroke={color}
+        strokeWidth={1.3}
       />
     </g>
   );
@@ -304,6 +335,8 @@ function ChartTooltip({ active, payload, label, currency = 'INR', compareSymbol 
       {point.sma50 ? <p className="text-violet-300">SMA 50 {formatCurrency(point.sma50, currency)}</p> : null}
       {point.sma200 ? <p className="text-emerald-300">SMA 200 {formatCurrency(point.sma200, currency)}</p> : null}
       {point.rsi14 ? <p className="text-rose-300">RSI 14 {point.rsi14.toFixed(2)}</p> : null}
+      {point.stochasticK !== null ? <p className="text-fuchsia-300">Stoch %K {point.stochasticK.toFixed(2)}</p> : null}
+      {point.stochasticD !== null ? <p className="text-amber-200">Stoch %D {point.stochasticD.toFixed(2)}</p> : null}
       {compareSymbol && point.compareCloseScaled ? <p className="text-cyan-200">Compare {compareSymbol}</p> : null}
     </div>
   );
@@ -319,6 +352,8 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
   const [expanded, setExpanded] = useState(savedLayout?.expanded ?? false);
   const [fullWindow, setFullWindow] = useState(false);
   const [priceZoom, setPriceZoom] = useState(savedLayout?.priceZoom ?? 1);
+  const [chartType, setChartType] = useState(savedLayout?.chartType || 'candles');
+  const [smaColors, setSmaColors] = useState({ ...DEFAULT_SMA_COLORS, ...(savedLayout?.smaColors || {}) });
   const [toggles, setToggles] = useState({ ...DEFAULT_TOGGLES, ...(savedLayout?.toggles || {}) });
   const [searchInput, setSearchInput] = useState(stock?.symbol || '');
   const [compareInput, setCompareInput] = useState(savedLayout?.compareSymbol || '');
@@ -379,6 +414,8 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
       autoRefresh,
       expanded,
       priceZoom,
+      chartType,
+      smaColors,
       compareSymbol,
       toggles,
       drawings: {
@@ -388,7 +425,7 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
       },
       alerts,
     });
-  }, [alerts, autoRefresh, compareSymbol, expanded, horizontalLineInput, interval, priceZoom, range, stock?.id, toggles, trendEndInput, trendStartInput]);
+  }, [alerts, autoRefresh, chartType, compareSymbol, expanded, horizontalLineInput, interval, priceZoom, range, smaColors, stock?.id, toggles, trendEndInput, trendStartInput]);
 
   useEffect(() => {
     if (!fullWindow) return undefined;
@@ -460,6 +497,7 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
     { label: 'SMA 200', value: latestPoint?.sma200, tone: 'text-emerald-300' },
     { label: 'VWAP', value: latestPoint?.vwap, tone: 'text-sky-300' },
     { label: 'RSI 14', value: latestPoint?.rsi14, tone: 'text-rose-300', raw: true },
+    { label: 'Stoch %K', value: latestPoint?.stochasticK, tone: 'text-fuchsia-300', raw: true },
     { label: 'Pivot', value: pivots?.pivot, tone: 'text-slate-200' },
   ];
 
@@ -620,6 +658,7 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
               <span>Symbol <span className="text-slate-200">{mainQuery.data?.marketSymbol || stock.symbol}</span></span>
               <span>Auto refresh <span className={autoRefresh ? 'text-emerald-300' : 'text-slate-500'}>{autoRefresh ? 'On' : 'Off'}</span></span>
               <span>Y zoom <span className="text-slate-200">{priceZoom.toFixed(2)}x</span></span>
+              <span>Chart <span className="text-slate-200 capitalize">{chartType}</span></span>
               {compareSymbols.length ? <span>Compare <span className="text-cyan-200">{compareSymbols.join(', ')}</span></span> : null}
             </div>
           </div>
@@ -788,6 +827,43 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-wrap gap-2">
             {[
+              ['candles', 'Candles'],
+              ['hollow', 'Hollow'],
+              ['line', 'Line'],
+            ].map(([value, label]) => (
+              <Button
+                key={value}
+                type="button"
+                variant="outline"
+                onClick={() => setChartType(value)}
+                className={`rounded-2xl border-white/10 ${chartType === value ? 'bg-white/10 text-white hover:bg-white/15' : 'bg-transparent text-slate-500 hover:bg-white/5'}`}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            {[
+              ['sma20', 'SMA 20'],
+              ['sma50', 'SMA 50'],
+              ['sma200', 'SMA 200'],
+            ].map(([key, label]) => (
+              <label key={key} className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300">
+                <span>{label}</span>
+                <input
+                  type="color"
+                  value={smaColors[key]}
+                  onChange={(event) => setSmaColors((current) => ({ ...current, [key]: event.target.value }))}
+                  className="h-7 w-8 cursor-pointer rounded border-0 bg-transparent p-0"
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex flex-wrap gap-2">
+            {[
               ['sma20', 'SMA 20'],
               ['sma50', 'SMA 50'],
               ['sma200', 'SMA 200'],
@@ -796,6 +872,7 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
               ['fibonacci', 'Fib'],
               ['rsi', 'RSI'],
               ['macd', 'MACD'],
+              ['stochastic', 'Stochastic'],
               ['vwap', 'VWAP'],
               ['volume', 'Volume'],
               ['compare', 'Compare'],
@@ -928,11 +1005,11 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
                         <Line type="monotone" dataKey="bollingerLower" stroke="#94A3B8" strokeWidth={1.2} dot={false} connectNulls />
                       </>
                     ) : null}
-                    {toggles.sma20 ? <Line type="monotone" dataKey="sma20" stroke="#22D3EE" strokeWidth={1.7} dot={false} connectNulls /> : null}
-                    {toggles.sma50 ? <Line type="monotone" dataKey="sma50" stroke="#C084FC" strokeWidth={1.7} dot={false} connectNulls /> : null}
-                    {toggles.sma200 ? <Line type="monotone" dataKey="sma200" stroke="#34D399" strokeWidth={1.7} dot={false} connectNulls /> : null}
-                    {toggles.vwap ? <Line type="monotone" dataKey="vwap" stroke="#38BDF8" strokeWidth={1.7} dot={false} connectNulls /> : null}
-                    {toggles.compare ? compareSymbols.map((symbol, index) => (
+                  {toggles.sma20 ? <Line type="monotone" dataKey="sma20" stroke={smaColors.sma20} strokeWidth={1.7} dot={false} connectNulls /> : null}
+                  {toggles.sma50 ? <Line type="monotone" dataKey="sma50" stroke={smaColors.sma50} strokeWidth={1.7} dot={false} connectNulls /> : null}
+                  {toggles.sma200 ? <Line type="monotone" dataKey="sma200" stroke={smaColors.sma200} strokeWidth={1.7} dot={false} connectNulls /> : null}
+                  {toggles.vwap ? <Line type="monotone" dataKey="vwap" stroke="#38BDF8" strokeWidth={1.7} dot={false} connectNulls /> : null}
+                  {toggles.compare ? compareSymbols.map((symbol, index) => (
                       <Line
                         key={symbol}
                         type="monotone"
@@ -942,11 +1019,13 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
                         dot={false}
                         connectNulls
                       />
-                    )) : null}
-                    {trendlineData.length ? <Line type="monotone" dataKey="manualTrend" stroke="#FDE047" strokeWidth={1.6} dot={false} connectNulls /> : null}
-                    <Line dataKey="close" stroke="transparent" dot={<CandleShape />} activeDot={false} isAnimationActive={false} />
-                  </ComposedChart>
-                </ResponsiveContainer>
+                  )) : null}
+                  {trendlineData.length ? <Line type="monotone" dataKey="manualTrend" stroke="#FDE047" strokeWidth={1.6} dot={false} connectNulls /> : null}
+                  {chartType === 'line'
+                    ? <Line type="monotone" dataKey="close" stroke="#F59E0B" strokeWidth={2.2} dot={false} connectNulls />
+                    : <Line dataKey="close" stroke="transparent" dot={<CandleShape chartType={chartType} />} activeDot={false} isAnimationActive={false} />}
+                </ComposedChart>
+              </ResponsiveContainer>
               </div>
 
               {toggles.volume ? (
@@ -1003,6 +1082,24 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
                     </Bar>
                     <Line type="monotone" dataKey="macdLine" stroke="#22D3EE" strokeWidth={1.8} dot={false} connectNulls />
                     <Line type="monotone" dataKey="macdSignal" stroke="#F59E0B" strokeWidth={1.8} dot={false} connectNulls />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              ) : null}
+
+              {toggles.stochastic ? (
+                <ResponsiveContainer width="100%" height={160}>
+                  <ComposedChart syncId="stock-chart-sync" data={renderedData} margin={{ left: 0, right: 16, top: 0, bottom: 0 }}>
+                    <CartesianGrid stroke="rgba(148,163,184,0.08)" vertical={false} />
+                    <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: '#94A3B8', fontSize: 12 }} minTickGap={28} />
+                    <YAxis domain={[0, 100]} axisLine={false} tickLine={false} orientation="right" tick={{ fill: '#64748B', fontSize: 11 }} />
+                    <Tooltip
+                      content={<ChartTooltip currency={mainQuery.data?.currency || 'INR'} compareSymbol={compareSymbol} />}
+                      cursor={{ stroke: 'rgba(148,163,184,0.55)', strokeWidth: 1 }}
+                    />
+                    <ReferenceLine y={80} stroke="rgba(244,63,94,0.55)" strokeDasharray="4 4" />
+                    <ReferenceLine y={20} stroke="rgba(16,185,129,0.55)" strokeDasharray="4 4" />
+                    <Line type="monotone" dataKey="stochasticK" stroke="#D946EF" strokeWidth={2.1} dot={false} connectNulls />
+                    <Line type="monotone" dataKey="stochasticD" stroke="#FBBF24" strokeWidth={1.9} dot={false} connectNulls />
                   </ComposedChart>
                 </ResponsiveContainer>
               ) : null}
