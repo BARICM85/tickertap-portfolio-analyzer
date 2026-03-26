@@ -1,6 +1,11 @@
 #env
 .env
 server/.zerodha-session.json
+server/.zerodha-session.local.json
+server/.zerodha-session.web.json
+server/.zerodha-instruments-cache.json
+server/.zerodha-instruments-cache*.json
+server/.zerodha-postbacks.log
 .npm-cache
 .env.*
 

@@ -726,6 +726,18 @@ const server = createServer(async (req, res) => {
   }
 
   try {
+    if (req.method === 'GET' && url.pathname === '/') {
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('TickerTap backend is running.');
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/favicon.ico') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
     if (req.method === 'GET' && url.pathname === '/api/health') {
       return sendJson(res, 200, { ok: true });
     }
