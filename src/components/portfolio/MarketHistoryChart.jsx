@@ -13,6 +13,10 @@ const RANGE_OPTIONS = [
   { label: '5D', value: '5d' },
   { label: '1M', value: '1mo' },
   { label: '3M', value: '3mo' },
+  { label: '6M', value: '6mo' },
+  { label: '1Y', value: '1y' },
+  { label: '3Y', value: '3y' },
+  { label: '5Y', value: '5y' },
 ];
 
 const INTERVAL_OPTIONS = [
@@ -416,6 +420,10 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
     }
     if (['60m', '180m'].includes(interval) && !['1d', '5d', '1mo', '3mo'].includes(range)) {
       setRange('1mo');
+      return;
+    }
+    if (['1d', '1mo'].includes(interval) && !['1mo', '3mo', '6mo', '1y', '3y', '5y'].includes(range)) {
+      setRange(interval === '1mo' ? '1y' : '6mo');
     }
   }, [interval, range]);
 
@@ -1075,8 +1083,17 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
                   )) : null}
                   {trendlineData.length ? <Line type="monotone" dataKey="manualTrend" stroke="#FDE047" strokeWidth={1.6} dot={false} connectNulls /> : null}
                   {chartType === 'line'
-                    ? <Line type="monotone" dataKey="close" stroke="#F59E0B" strokeWidth={2.2} dot={false} connectNulls />
-                    : <Line dataKey="close" stroke="transparent" dot={<CandleShape chartType={chartType} />} activeDot={false} isAnimationActive={false} />}
+                    ? <Line key="price-line" type="monotone" dataKey="close" stroke="#F59E0B" strokeWidth={2.2} dot={false} connectNulls />
+                    : (
+                      <Line
+                        key={`price-${chartType}`}
+                        dataKey="close"
+                        stroke="transparent"
+                        dot={(props) => <CandleShape {...props} chartType={chartType} />}
+                        activeDot={false}
+                        isAnimationActive={false}
+                      />
+                    )}
                 </ComposedChart>
               </ResponsiveContainer>
               </div>

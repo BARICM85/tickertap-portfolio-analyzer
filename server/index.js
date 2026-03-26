@@ -27,7 +27,7 @@ const env = {
   ...process.env,
 };
 
-const PORT = Number(env.ZERODHA_SERVER_PORT || 8000);
+const PORT = Number(env.PORT || env.ZERODHA_SERVER_PORT || 8000);
 const API_KEY = env.ZERODHA_API_KEY || '';
 const API_SECRET = env.ZERODHA_API_SECRET || '';
 const FRONTEND_URL = env.ZERODHA_FRONTEND_URL || 'http://localhost:5173';
@@ -314,6 +314,10 @@ function buildZerodhaDateRange(range = '6mo', interval = 'day') {
     from.setMonth(to.getMonth() - 6);
   } else if (range === '1y') {
     from.setFullYear(to.getFullYear() - 1);
+  } else if (range === '3y') {
+    from.setFullYear(to.getFullYear() - 3);
+  } else if (range === '5y') {
+    from.setFullYear(to.getFullYear() - 5);
   }
 
   return {
