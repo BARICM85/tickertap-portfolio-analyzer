@@ -339,8 +339,9 @@ function CandleShape(props) {
 
   if (!payload || !yAxis?.scale) return null;
 
-  const candleWidth = Math.max(4, Math.min(width * 0.66, 12));
-  const centerX = x + (width / 2);
+  const resolvedWidth = Number.isFinite(width) && width > 0 ? width : 12;
+  const candleWidth = Math.max(4, Math.min(resolvedWidth * 0.66, 12));
+  const centerX = x + (resolvedWidth / 2);
   const openY = yAxis.scale(payload.open);
   const closeY = yAxis.scale(payload.close);
   const highY = yAxis.scale(payload.high);
