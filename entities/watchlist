@@ -1,0 +1,25 @@
+{
+  "name": "Watchlist",
+  "type": "object",
+  "properties": {
+    "symbol": {
+      "type": "string",
+      "description": "Stock ticker symbol"
+    },
+    "name": {
+      "type": "string",
+      "description": "Company name"
+    },
+    "target_price": {
+      "type": "number",
+      "description": "Target buy price"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "symbol",
+    "name"
+  ]
+}

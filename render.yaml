@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: tickertap-backend
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm run start:server
+    autoDeploy: true
+    envVars:
+      - key: ZERODHA_SERVER_PORT
+        value: 10000

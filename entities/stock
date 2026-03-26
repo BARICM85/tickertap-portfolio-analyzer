@@ -1,0 +1,87 @@
+{
+  "name": "Stock",
+  "type": "object",
+  "properties": {
+    "symbol": {
+      "type": "string",
+      "description": "Stock ticker symbol (e.g. AAPL)"
+    },
+    "name": {
+      "type": "string",
+      "description": "Company name"
+    },
+    "sector": {
+      "type": "string",
+      "description": "Industry sector"
+    },
+    "quantity": {
+      "type": "number",
+      "description": "Number of shares held"
+    },
+    "buy_price": {
+      "type": "number",
+      "description": "Average purchase price per share"
+    },
+    "current_price": {
+      "type": "number",
+      "description": "Current market price per share"
+    },
+    "buy_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of purchase"
+    },
+    "currency": {
+      "type": "string",
+      "enum": [
+        "USD",
+        "EUR",
+        "GBP",
+        "INR",
+        "JPY"
+      ],
+      "default": "USD"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes"
+    },
+    "price_history": {
+      "type": "array",
+      "description": "Historical price snapshots",
+      "items": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string"
+          },
+          "price": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "beta": {
+      "type": "number",
+      "description": "Stock beta value"
+    },
+    "pe_ratio": {
+      "type": "number",
+      "description": "Price to earnings ratio"
+    },
+    "market_cap": {
+      "type": "string",
+      "description": "Market capitalization"
+    },
+    "dividend_yield": {
+      "type": "number",
+      "description": "Dividend yield percentage"
+    }
+  },
+  "required": [
+    "symbol",
+    "name",
+    "quantity",
+    "buy_price"
+  ]
+}
