@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
-import { Bar, Cell, ComposedChart, CartesianGrid, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, Cell, ComposedChart, CartesianGrid, Customized, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Download, Maximize2, Minimize2, RefreshCw, ZoomIn, ZoomOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import StockAutocompleteInput from '@/components/shared/StockAutocompleteInput';
@@ -363,6 +363,57 @@ function CandleShape(props) {
         stroke={color}
         strokeWidth={1.3}
       />
+    </g>
+  );
+}
+
+function CandlesLayer({
+  chartType = 'candles',
+  data = [],
+  xAxisMap,
+  yAxisMap,
+}) {
+  const xAxis = Object.values(xAxisMap || {})[0];
+  const yAxis = Object.values(yAxisMap || {})[0];
+  const xScale = xAxis?.scale;
+  const yScale = yAxis?.scale;
+
+  if (!xScale || !yScale || !data.length) return null;
+
+  const bandwidth = typeof xScale.bandwidth === 'function' ? xScale.bandwidth() : 12;
+  const candleWidth = Math.max(4, Math.min(bandwidth * 0.55, 14));
+
+  return (
+    <g>
+      {data.map((point) => {
+        const xValue = xScale(point.label);
+        if (xValue === undefined) return null;
+
+        const centerX = xValue + (bandwidth / 2);
+        const openY = yScale(point.open);
+        const closeY = yScale(point.close);
+        const highY = yScale(point.high);
+        const lowY = yScale(point.low);
+        const bodyY = Math.min(openY, closeY);
+        const bodyHeight = Math.max(1, Math.abs(closeY - openY));
+        const color = point.bullish ? '#10B981' : '#F43F5E';
+
+        return (
+          <g key={`candle-${point.date}`}>
+            <line x1={centerX} x2={centerX} y1={highY} y2={lowY} stroke={color} strokeWidth={1.2} />
+            <rect
+              x={centerX - (candleWidth / 2)}
+              y={bodyY}
+              width={candleWidth}
+              height={bodyHeight}
+              rx={1.5}
+              fill={chartType === 'hollow' && point.bullish ? 'transparent' : color}
+              stroke={color}
+              strokeWidth={1.2}
+            />
+          </g>
+        );
+      })}
     </g>
   );
 }
@@ -1087,16 +1138,7 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
                   {trendlineData.length ? <Line type="monotone" dataKey="manualTrend" stroke="#FDE047" strokeWidth={1.6} dot={false} connectNulls /> : null}
                   {chartType === 'line'
                     ? <Line key="price-line" type="monotone" dataKey="close" stroke="#F59E0B" strokeWidth={2.2} dot={false} connectNulls />
-                    : (
-                      <Line
-                        key={`price-${chartType}`}
-                        dataKey="close"
-                        stroke="transparent"
-                        dot={(props) => <CandleShape {...props} chartType={chartType} />}
-                        activeDot={false}
-                        isAnimationActive={false}
-                      />
-                    )}
+                    : <Customized key={`price-${chartType}`} component={(props) => <CandlesLayer {...props} data={renderedData} chartType={chartType} />} />}
                 </ComposedChart>
               </ResponsiveContainer>
               </div>
