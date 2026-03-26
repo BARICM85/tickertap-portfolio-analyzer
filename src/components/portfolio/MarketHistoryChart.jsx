@@ -17,6 +17,8 @@ const RANGE_OPTIONS = [
   { label: '1Y', value: '1y' },
   { label: '3Y', value: '3y' },
   { label: '5Y', value: '5y' },
+  { label: 'YTD', value: 'ytd' },
+  { label: 'ALL', value: 'max' },
 ];
 
 const INTERVAL_OPTIONS = [
@@ -422,7 +424,7 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
       setRange('1mo');
       return;
     }
-    if (['1d', '1mo'].includes(interval) && !['1mo', '3mo', '6mo', '1y', '3y', '5y'].includes(range)) {
+    if (['1d', '1mo'].includes(interval) && !['1mo', '3mo', '6mo', '1y', '3y', '5y', 'ytd', 'max'].includes(range)) {
       setRange(interval === '1mo' ? '1y' : '6mo');
     }
   }, [interval, range]);

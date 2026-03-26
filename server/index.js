@@ -318,6 +318,11 @@ function buildZerodhaDateRange(range = '6mo', interval = 'day') {
     from.setFullYear(to.getFullYear() - 3);
   } else if (range === '5y') {
     from.setFullYear(to.getFullYear() - 5);
+  } else if (range === 'ytd') {
+    from.setMonth(0, 1);
+    from.setHours(0, 0, 0, 0);
+  } else if (range === 'max') {
+    from.setFullYear(to.getFullYear() - 15);
   }
 
   return {
