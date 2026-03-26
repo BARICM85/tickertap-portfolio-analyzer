@@ -23,9 +23,13 @@ const INTERVAL_OPTIONS = [
   { label: '30m', value: '30m' },
   { label: '1h', value: '60m' },
   { label: '3h', value: '180m' },
+  { label: '1D', value: '1d' },
+  { label: '1M', value: '1mo' },
 ];
 
 const DEFAULT_TOGGLES = {
+  ema9: true,
+  ema21: true,
   sma20: true,
   sma50: true,
   sma200: true,
@@ -41,6 +45,8 @@ const DEFAULT_TOGGLES = {
 };
 
 const DEFAULT_SMA_COLORS = {
+  ema9: '#F59E0B',
+  ema21: '#60A5FA',
   sma20: '#22D3EE',
   sma50: '#C084FC',
   sma200: '#34D399',
@@ -92,7 +98,9 @@ function buildIndicators(points = []) {
   const lows = points.map((point) => Number(point.low));
   let cumulativeVolume = 0;
   let cumulativeVolumePrice = 0;
+  let ema9 = null;
   let ema12 = null;
+  let ema21 = null;
   let ema26 = null;
   let signal = null;
 
@@ -111,13 +119,17 @@ function buildIndicators(points = []) {
 
     cumulativeVolume += Number(point.volume || 0);
     cumulativeVolumePrice += Number(point.close || 0) * Number(point.volume || 0);
+    ema9 = ema(ema9, Number(point.close), 9);
     ema12 = ema(ema12, Number(point.close), 12);
+    ema21 = ema(ema21, Number(point.close), 21);
     ema26 = ema(ema26, Number(point.close), 26);
     const macdLine = ema12 !== null && ema26 !== null ? ema12 - ema26 : null;
     signal = macdLine === null ? signal : ema(signal, macdLine, 9);
 
     return {
       ...point,
+      ema9,
+      ema21,
       sma20,
       sma50,
       sma200,
@@ -236,6 +248,30 @@ function aggregateCandles(points = [], bucketSize = 1) {
   return result;
 }
 
+function buildHeikinAshi(points = []) {
+  let previousOpen = null;
+  let previousClose = null;
+
+  return points.map((point) => {
+    const haClose = Number(((point.open + point.high + point.low + point.close) / 4).toFixed(2));
+    const haOpen = Number((((previousOpen ?? point.open) + (previousClose ?? point.close)) / 2).toFixed(2));
+    const haHigh = Math.max(point.high, haOpen, haClose);
+    const haLow = Math.min(point.low, haOpen, haClose);
+
+    previousOpen = haOpen;
+    previousClose = haClose;
+
+    return {
+      ...point,
+      open: haOpen,
+      high: haHigh,
+      low: haLow,
+      close: haClose,
+      bullish: haClose >= haOpen,
+    };
+  });
+}
+
 function getIntervalConfig(interval) {
   switch (interval) {
     case '1m':
@@ -252,6 +288,10 @@ function getIntervalConfig(interval) {
       return { requestInterval: '60minute', aggregate: 1, refreshMs: 60000 };
     case '180m':
       return { requestInterval: '60minute', aggregate: 3, refreshMs: 60000 };
+    case '1d':
+      return { requestInterval: 'day', aggregate: 1, refreshMs: 180000 };
+    case '1mo':
+      return { requestInterval: 'month', aggregate: 1, refreshMs: 300000 };
     default:
       return { requestInterval: 'day', aggregate: 1, refreshMs: 60000 };
   }
@@ -485,13 +525,19 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
     () => buildCompareSeries(baseData, comparePointsSeries),
     [baseData, comparePointsSeries],
   );
-  const chartData = useMemo(() => buildIndicators(comparedData), [comparedData]);
+  const transformedData = useMemo(
+    () => (chartType === 'heikin' ? buildHeikinAshi(comparedData) : comparedData),
+    [chartType, comparedData],
+  );
+  const chartData = useMemo(() => buildIndicators(transformedData), [transformedData]);
   const pivots = buildPivotLevels(chartData);
   const fib = buildFibonacciLevels(chartData);
   const latestPoint = chartData[chartData.length - 1];
 
   const indicatorSummary = [
     { label: 'Last', value: latestPoint?.close, tone: 'text-amber-300' },
+    { label: 'EMA 9', value: latestPoint?.ema9, tone: 'text-amber-300' },
+    { label: 'EMA 21', value: latestPoint?.ema21, tone: 'text-sky-300' },
     { label: 'SMA 20', value: latestPoint?.sma20, tone: 'text-cyan-300' },
     { label: 'SMA 50', value: latestPoint?.sma50, tone: 'text-violet-300' },
     { label: 'SMA 200', value: latestPoint?.sma200, tone: 'text-emerald-300' },
@@ -829,6 +875,7 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
             {[
               ['candles', 'Candles'],
               ['hollow', 'Hollow'],
+              ['heikin', 'Heikin Ashi'],
               ['line', 'Line'],
             ].map(([value, label]) => (
               <Button
@@ -844,6 +891,8 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             {[
+              ['ema9', 'EMA 9'],
+              ['ema21', 'EMA 21'],
               ['sma20', 'SMA 20'],
               ['sma50', 'SMA 50'],
               ['sma200', 'SMA 200'],
@@ -864,6 +913,8 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-wrap gap-2">
             {[
+              ['ema9', 'EMA 9'],
+              ['ema21', 'EMA 21'],
               ['sma20', 'SMA 20'],
               ['sma50', 'SMA 50'],
               ['sma200', 'SMA 200'],
@@ -1005,6 +1056,8 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
                         <Line type="monotone" dataKey="bollingerLower" stroke="#94A3B8" strokeWidth={1.2} dot={false} connectNulls />
                       </>
                     ) : null}
+                  {toggles.ema9 ? <Line type="monotone" dataKey="ema9" stroke={smaColors.ema9} strokeWidth={1.7} dot={false} connectNulls /> : null}
+                  {toggles.ema21 ? <Line type="monotone" dataKey="ema21" stroke={smaColors.ema21} strokeWidth={1.7} dot={false} connectNulls /> : null}
                   {toggles.sma20 ? <Line type="monotone" dataKey="sma20" stroke={smaColors.sma20} strokeWidth={1.7} dot={false} connectNulls /> : null}
                   {toggles.sma50 ? <Line type="monotone" dataKey="sma50" stroke={smaColors.sma50} strokeWidth={1.7} dot={false} connectNulls /> : null}
                   {toggles.sma200 ? <Line type="monotone" dataKey="sma200" stroke={smaColors.sma200} strokeWidth={1.7} dot={false} connectNulls /> : null}
