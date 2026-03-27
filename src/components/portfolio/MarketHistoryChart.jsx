@@ -25,6 +25,12 @@ const INTERVAL_OPTIONS = [
   { label: '3h', value: '180m' },
 ];
 
+const CHART_TYPE_OPTIONS = [
+  { label: 'Candles', value: 'candles' },
+  { label: 'Hollow', value: 'hollow' },
+  { label: 'Line', value: 'line' },
+];
+
 const DEFAULT_TOGGLES = {
   sma20: true,
   sma50: true,
@@ -253,7 +259,7 @@ function buildCompareSeries(primaryPoints = [], compareSeries = []) {
 
 function CandleShape(props) {
   const {
-    x, width, yAxis, payload,
+    x, width, yAxis, payload, mode = 'candles',
   } = props;
 
   if (!payload || !yAxis?.scale) return null;
@@ -267,6 +273,7 @@ function CandleShape(props) {
   const bodyY = Math.min(openY, closeY);
   const bodyHeight = Math.max(1, Math.abs(closeY - openY));
   const color = payload.bullish ? '#10B981' : '#F43F5E';
+  const fill = mode === 'hollow' && payload.bullish ? 'rgba(0,0,0,0)' : color;
 
   return (
     <g>
@@ -277,7 +284,9 @@ function CandleShape(props) {
         width={candleWidth}
         height={bodyHeight}
         rx={1.5}
-        fill={color}
+        fill={fill}
+        stroke={color}
+        strokeWidth={1.2}
       />
     </g>
   );
@@ -313,6 +322,8 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
   const [expanded, setExpanded] = useState(savedLayout?.expanded ?? false);
   const [fullWindow, setFullWindow] = useState(false);
   const [showTools, setShowTools] = useState(savedLayout?.showTools ?? false);
+  const [chartType, setChartType] = useState(savedLayout?.chartType || 'candles');
+  const [drawMode, setDrawMode] = useState(savedLayout?.drawMode || 'cursor');
   const [priceZoom, setPriceZoom] = useState(savedLayout?.priceZoom ?? 1);
   const [toggles, setToggles] = useState({ ...DEFAULT_TOGGLES, ...(savedLayout?.toggles || {}) });
   const [searchInput, setSearchInput] = useState(stock?.symbol || '');
@@ -373,6 +384,8 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
       autoRefresh,
       expanded,
       showTools,
+      chartType,
+      drawMode,
       priceZoom,
       compareSymbol,
       toggles,
@@ -382,7 +395,7 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
         trendEnd: trendEndInput ? Number(trendEndInput) : null,
       },
     });
-  }, [autoRefresh, compareSymbol, expanded, horizontalLineInput, interval, priceZoom, range, showTools, stock?.id, toggles, trendEndInput, trendStartInput]);
+  }, [autoRefresh, chartType, compareSymbol, drawMode, expanded, horizontalLineInput, interval, priceZoom, range, showTools, stock?.id, toggles, trendEndInput, trendStartInput]);
 
   useEffect(() => {
     if (!fullWindow) return undefined;
@@ -510,6 +523,25 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
     ];
   }, [compareSymbols, fib, horizontalLine, pivots, priceZoom, renderedData, toggles, trendlineData.length]);
   const chartHeight = fullWindow ? 820 : expanded ? 680 : 500;
+  const priceChange = latestPoint && renderedData.length > 1
+    ? latestPoint.close - (renderedData[renderedData.length - 2]?.close ?? latestPoint.open ?? latestPoint.close)
+    : 0;
+  const priceChangePercent = latestPoint?.close
+    ? (priceChange / ((renderedData[renderedData.length - 2]?.close ?? latestPoint.open ?? latestPoint.close) || latestPoint.close)) * 100
+    : 0;
+  const ohlcSummary = latestPoint ? [
+    `O ${formatCurrency(latestPoint.open, mainQuery.data?.currency || 'INR')}`,
+    `H ${formatCurrency(latestPoint.high, mainQuery.data?.currency || 'INR')}`,
+    `L ${formatCurrency(latestPoint.low, mainQuery.data?.currency || 'INR')}`,
+    `C ${formatCurrency(latestPoint.close, mainQuery.data?.currency || 'INR')}`,
+  ] : [];
+  const indicatorLegend = [
+    toggles.sma20 && latestPoint?.sma20 ? { label: 'SMA 20', value: formatCurrency(latestPoint.sma20, mainQuery.data?.currency || 'INR'), tone: '#22D3EE' } : null,
+    toggles.sma50 && latestPoint?.sma50 ? { label: 'SMA 50', value: formatCurrency(latestPoint.sma50, mainQuery.data?.currency || 'INR'), tone: '#C084FC' } : null,
+    toggles.sma200 && latestPoint?.sma200 ? { label: 'SMA 200', value: formatCurrency(latestPoint.sma200, mainQuery.data?.currency || 'INR'), tone: '#34D399' } : null,
+    toggles.vwap && latestPoint?.vwap ? { label: 'VWAP', value: formatCurrency(latestPoint.vwap, mainQuery.data?.currency || 'INR'), tone: '#38BDF8' } : null,
+    toggles.rsi && latestPoint?.rsi14 ? { label: 'RSI', value: latestPoint.rsi14.toFixed(2), tone: '#FB7185' } : null,
+  ].filter(Boolean);
 
   const handleToggle = (key) => setToggles((current) => ({ ...current, [key]: !current[key] }));
 
@@ -563,19 +595,39 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
     setPriceZoom((current) => clampPriceZoom(current * direction));
   };
 
+  const quickToolAction = (mode) => {
+    setDrawMode(mode);
+    setShowTools(true);
+    if (!latestPoint) return;
+    if (mode === 'hline' && !horizontalLineInput) {
+      setHorizontalLineInput(String(Number(latestPoint.close).toFixed(2)));
+    }
+    if (mode === 'trend' && (!trendStartInput || !trendEndInput)) {
+      setTrendStartInput(String(Number(latestPoint.low ?? latestPoint.close).toFixed(2)));
+      setTrendEndInput(String(Number(latestPoint.high ?? latestPoint.close).toFixed(2)));
+    }
+    if (mode === 'compare' && !toggles.compare) {
+      setToggles((current) => ({ ...current, compare: true }));
+    }
+  };
+
   return (
     <section className={fullWindow ? 'fixed inset-2 z-[80] overflow-y-auto rounded-[28px] border border-white/10 bg-[#0a1018]/98 p-4 shadow-[0_24px_120px_rgba(0,0,0,0.52)]' : 'rounded-[28px] border border-white/10 bg-[#0a1018]/95 p-4 shadow-[0_20px_56px_rgba(0,0,0,0.24)]'}>
       <div className="flex flex-col gap-3">
-        <div className="rounded-[24px] border border-white/8 bg-[#0b1119] px-4 py-3">
+        <div className="rounded-[22px] border border-white/8 bg-[#0b1119] px-3 py-2.5">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="min-w-0">
-              <div className="flex items-center gap-3">
-                <div className="rounded-2xl bg-amber-300/12 px-3 py-2 text-sm font-semibold text-amber-200">{stock.symbol}</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="rounded-2xl bg-amber-300/12 px-3 py-1.5 text-sm font-semibold text-amber-200">{stock.symbol}</div>
                 <p className="truncate text-sm text-slate-300">{stock.name}</p>
+                <span className="text-xs uppercase tracking-[0.18em] text-slate-500">{stock.exchange || 'NSE'} · {range.toUpperCase()}</span>
               </div>
-              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-400">
                 <span>Source <span className="font-semibold uppercase tracking-[0.12em] text-amber-300">{mainQuery.data?.source || '--'}</span></span>
                 <span>Last <span className="font-semibold text-white">{latestPoint?.close ? formatCurrency(latestPoint.close, mainQuery.data?.currency || 'INR') : '--'}</span></span>
+                <span className={priceChange >= 0 ? 'text-emerald-300' : 'text-rose-300'}>
+                  {priceChange >= 0 ? '+' : ''}{formatCurrency(priceChange, mainQuery.data?.currency || 'INR')} ({priceChangePercent >= 0 ? '+' : ''}{priceChangePercent.toFixed(2)}%)
+                </span>
                 <span>RSI <span className="font-semibold text-slate-200">{latestPoint?.rsi14 ? latestPoint.rsi14.toFixed(2) : '--'}</span></span>
                 <span>Y Zoom <span className="font-semibold text-slate-200">{priceZoom.toFixed(2)}x</span></span>
                 {compareSymbols.length ? <span>Compare <span className="font-semibold text-cyan-200">{compareSymbols.join(', ')}</span></span> : null}
@@ -593,7 +645,7 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
                       onStockSelect(item);
                     }}
                     placeholder="Search another stock"
-                    className="h-10 rounded-2xl border-white/10 bg-white/5"
+                    className="h-9 rounded-2xl border-white/10 bg-white/5"
                   />
                 </div>
               ) : null}
@@ -601,30 +653,30 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
                 type="button"
                 variant="outline"
                 onClick={() => setShowTools((value) => !value)}
-                className={`rounded-2xl border-white/10 ${showTools ? 'bg-white/10 text-white' : 'bg-white/5 text-slate-200'} hover:bg-white/10`}
+                className={`h-9 rounded-2xl border-white/10 px-3 text-xs ${showTools ? 'bg-white/10 text-white' : 'bg-white/5 text-slate-200'} hover:bg-white/10`}
               >
                 Tools
                 <ChevronDown className={`h-4 w-4 transition ${showTools ? 'rotate-180' : ''}`} />
               </Button>
-              <Button type="button" variant="outline" onClick={() => setFullWindow((value) => !value)} className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10">
+              <Button type="button" variant="outline" onClick={() => setFullWindow((value) => !value)} className="h-9 rounded-2xl border-white/10 px-3 text-xs bg-white/5 text-white hover:bg-white/10">
                 {fullWindow ? 'Exit Full Window' : 'Full Window'}
               </Button>
-              <Button type="button" variant="outline" onClick={() => setExpanded((value) => !value)} className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10">
+              <Button type="button" variant="outline" onClick={() => setExpanded((value) => !value)} className="h-9 rounded-2xl border-white/10 px-3 text-xs bg-white/5 text-white hover:bg-white/10">
                 {expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
                 {expanded ? 'Compact' : 'Expand'}
               </Button>
-              <Button type="button" variant="outline" onClick={() => setPriceZoom((value) => Math.min(Number((value * 1.35).toFixed(2)), 8))} className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10">
+              <Button type="button" variant="outline" onClick={() => setPriceZoom((value) => Math.min(Number((value * 1.35).toFixed(2)), 8))} className="h-9 rounded-2xl border-white/10 px-3 text-xs bg-white/5 text-white hover:bg-white/10">
                 <ZoomIn className="h-4 w-4" />
                 Y+
               </Button>
-              <Button type="button" variant="outline" onClick={() => setPriceZoom((value) => Math.max(Number((value / 1.35).toFixed(2)), 0.45))} className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10">
+              <Button type="button" variant="outline" onClick={() => setPriceZoom((value) => Math.max(Number((value / 1.35).toFixed(2)), 0.45))} className="h-9 rounded-2xl border-white/10 px-3 text-xs bg-white/5 text-white hover:bg-white/10">
                 <ZoomOut className="h-4 w-4" />
                 Y-
               </Button>
-              <Button type="button" variant="outline" onClick={() => setPriceZoom(1)} className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10">
+              <Button type="button" variant="outline" onClick={() => setPriceZoom(1)} className="h-9 rounded-2xl border-white/10 px-3 text-xs bg-white/5 text-white hover:bg-white/10">
                 Reset Y
               </Button>
-              <Button type="button" variant="outline" onClick={exportChart} className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10">
+              <Button type="button" variant="outline" onClick={exportChart} className="h-9 rounded-2xl border-white/10 px-3 text-xs bg-white/5 text-white hover:bg-white/10">
                 <Download className="h-4 w-4" />
                 Export
               </Button>
@@ -632,11 +684,11 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
                 type="button"
                 variant="outline"
                 onClick={() => setAutoRefresh((value) => !value)}
-                className={`rounded-2xl border-white/10 ${autoRefresh ? 'bg-emerald-400/15 text-emerald-200 hover:bg-emerald-400/20' : 'bg-white/5 text-white hover:bg-white/10'}`}
+                className={`h-9 rounded-2xl border-white/10 px-3 text-xs ${autoRefresh ? 'bg-emerald-400/15 text-emerald-200 hover:bg-emerald-400/20' : 'bg-white/5 text-white hover:bg-white/10'}`}
               >
                 {autoRefresh ? 'Auto On' : 'Auto Off'}
               </Button>
-              <Button type="button" variant="outline" onClick={() => { mainQuery.refetch(); compareQueries.forEach((query) => query.refetch?.()); }} className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10">
+              <Button type="button" variant="outline" onClick={() => { mainQuery.refetch(); compareQueries.forEach((query) => query.refetch?.()); }} className="h-9 rounded-2xl border-white/10 px-3 text-xs bg-white/5 text-white hover:bg-white/10">
                 <RefreshCw className={`h-4 w-4 ${(mainQuery.isFetching || compareQueries.some((query) => query.isFetching)) ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
@@ -644,32 +696,49 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
           </div>
         </div>
 
-        <div className="rounded-[24px] border border-white/8 bg-[#0b1119] px-3 py-3">
+        <div className="rounded-[22px] border border-white/8 bg-[#0b1119] px-3 py-2.5">
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-2">
-              {RANGE_OPTIONS.map((option) => (
-                <Button
-                  key={option.value}
-                  type="button"
-                  variant="outline"
-                  onClick={() => setRange(option.value)}
-                  className={`h-9 rounded-2xl border-white/10 px-3 ${range === option.value ? 'bg-amber-300 text-slate-950 hover:bg-amber-200' : 'bg-white/5 text-white hover:bg-white/10'}`}
+              <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-[#0f1723] px-2 py-1.5">
+                <span className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Range</span>
+                <select
+                  value={range}
+                  onChange={(event) => setRange(event.target.value)}
+                  className="h-7 rounded-xl border border-white/10 bg-[#111a27] px-2 text-xs text-white outline-none"
                 >
-                  {option.label}
-                </Button>
-              ))}
-              <div className="mx-1 hidden h-6 w-px bg-white/10 md:block" />
-              {INTERVAL_OPTIONS.map((option) => (
-                <Button
-                  key={option.value}
-                  type="button"
-                  variant="outline"
-                  onClick={() => setInterval(option.value)}
-                  className={`h-9 rounded-2xl border-white/10 px-3 ${interval === option.value ? 'bg-cyan-300 text-slate-950 hover:bg-cyan-200' : 'bg-white/5 text-white hover:bg-white/10'}`}
+                  {RANGE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-[#0f1723] px-2 py-1.5">
+                <span className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Interval</span>
+                <select
+                  value={interval}
+                  onChange={(event) => setInterval(event.target.value)}
+                  className="h-7 rounded-xl border border-white/10 bg-[#111a27] px-2 text-xs text-white outline-none"
                 >
-                  {option.label}
-                </Button>
-              ))}
+                  {INTERVAL_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-1 rounded-2xl border border-white/10 bg-[#0f1723] p-1">
+                {CHART_TYPE_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setChartType(option.value)}
+                    className={`h-7 rounded-xl px-2.5 text-[11px] font-medium transition ${
+                      chartType === option.value
+                        ? 'bg-white/12 text-white'
+                        : 'text-slate-500 hover:bg-white/5 hover:text-slate-200'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -691,7 +760,7 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
                   type="button"
                   variant="outline"
                   onClick={() => handleToggle(key)}
-                  className={`h-8 rounded-2xl border-white/10 px-3 text-xs ${toggles[key] ? 'bg-white/10 text-white hover:bg-white/15' : 'bg-transparent text-slate-500 hover:bg-white/5'}`}
+                  className={`h-7 rounded-2xl border-white/10 px-2.5 text-[11px] ${toggles[key] ? 'bg-white/10 text-white hover:bg-white/15' : 'bg-transparent text-slate-500 hover:bg-white/5'}`}
                 >
                   {label}
                 </Button>
@@ -745,7 +814,17 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
           </div>
         ) : null}
 
-        <div ref={chartWrapRef} className="rounded-[26px] border border-white/8 bg-[#060b12] p-3">
+        <div ref={chartWrapRef} className="rounded-[24px] border border-white/8 bg-[#060b12] p-3">
+          <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-white/6 pb-2 text-[11px] text-slate-400">
+            <span className="font-semibold text-slate-200">{stock.symbol}</span>
+            <span>{interval.toUpperCase()} · {mainQuery.data?.marketSymbol || stock.symbol}</span>
+            {ohlcSummary.map((item) => (
+              <span key={item} className="text-slate-300">{item}</span>
+            ))}
+            <span className={priceChange >= 0 ? 'font-semibold text-emerald-300' : 'font-semibold text-rose-300'}>
+              {priceChange >= 0 ? '+' : ''}{formatCurrency(priceChange, mainQuery.data?.currency || 'INR')} ({priceChangePercent >= 0 ? '+' : ''}{priceChangePercent.toFixed(2)}%)
+            </span>
+          </div>
           <div className="mb-2 flex items-center justify-between gap-3 text-[11px] text-slate-500">
             <span>Drag or wheel on the main chart to zoom the Y-axis.</span>
             <span className="hidden sm:inline">Double-click resets price scale.</span>
@@ -760,12 +839,46 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
           ) : (
             <div className="space-y-4">
               <div
-                className="select-none cursor-ns-resize"
+                className="relative select-none cursor-ns-resize pl-0 md:pl-14"
                 onMouseDown={startDragZoom}
                 onWheel={handleWheelZoom}
                 onDoubleClick={() => setPriceZoom(1)}
                 role="presentation"
               >
+                <div className="absolute left-0 top-2 z-10 hidden flex-col gap-2 md:flex">
+                  {[
+                    { id: 'cursor', label: 'Cur' },
+                    { id: 'hline', label: 'H' },
+                    { id: 'trend', label: 'T' },
+                    { id: 'compare', label: 'Cmp' },
+                  ].map((tool) => (
+                    <button
+                      key={tool.id}
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        quickToolAction(tool.id);
+                      }}
+                      className={`flex h-9 min-w-[40px] items-center justify-center rounded-2xl border text-[11px] font-semibold transition ${
+                        drawMode === tool.id
+                          ? 'border-cyan-300/60 bg-cyan-300/15 text-cyan-100'
+                          : 'border-white/10 bg-[#0b1119]/90 text-slate-400 hover:bg-white/10 hover:text-white'
+                      }`}
+                    >
+                      {tool.label}
+                    </button>
+                  ))}
+                </div>
+                {indicatorLegend.length ? (
+                  <div className="pointer-events-none absolute left-0 top-2 z-10 hidden max-w-[60%] flex-wrap gap-2 md:flex md:left-14">
+                    {indicatorLegend.map((item) => (
+                      <div key={item.label} className="rounded-xl border border-white/10 bg-[#0b1119]/88 px-2.5 py-1 text-[11px] text-slate-200 backdrop-blur">
+                        <span style={{ color: item.tone }} className="font-semibold">{item.label}</span>
+                        <span className="ml-2 text-slate-300">{item.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 <ResponsiveContainer width="100%" height={chartHeight}>
                   <ComposedChart syncId="stock-chart-sync" data={renderedData} margin={{ left: 0, right: 16, top: 10, bottom: 0 }}>
                     <CartesianGrid stroke="rgba(148,163,184,0.10)" vertical />
@@ -818,7 +931,11 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
                       />
                     )) : null}
                     {trendlineData.length ? <Line type="monotone" dataKey="manualTrend" stroke="#FDE047" strokeWidth={1.6} dot={false} connectNulls /> : null}
-                    <Line dataKey="close" stroke="transparent" dot={<CandleShape />} activeDot={false} isAnimationActive={false} />
+                    {chartType === 'line' ? (
+                      <Line type="monotone" dataKey="close" stroke="#F8FAFC" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
+                    ) : (
+                      <Line dataKey="close" stroke="transparent" dot={<CandleShape mode={chartType} />} activeDot={false} isAnimationActive={false} />
+                    )}
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -880,6 +997,20 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
                   </ComposedChart>
                 </ResponsiveContainer>
               ) : null}
+
+              <div className="flex flex-wrap items-center gap-2 border-t border-white/6 pt-3">
+                {RANGE_OPTIONS.map((option) => (
+                  <Button
+                    key={`footer-${option.value}`}
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setRange(option.value)}
+                    className={`h-7 rounded-xl px-2.5 text-[11px] ${range === option.value ? 'bg-white/10 text-white' : 'text-slate-500 hover:bg-white/5 hover:text-slate-200'}`}
+                  >
+                    {option.label}
+                  </Button>
+                ))}
+              </div>
             </div>
           )}
         </div>
