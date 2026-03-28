@@ -140,8 +140,11 @@ This project already includes [render.yaml](./render.yaml).
   - `ZERODHA_API_SECRET`
   - `ZERODHA_REDIRECT_URI=https://YOUR-RENDER-BACKEND.onrender.com/api/zerodha/callback`
   - `ZERODHA_FRONTEND_URL=https://YOUR-VERCEL-FRONTEND.vercel.app`
+  - `ZERODHA_DATABASE_URL=postgres://USER:PASSWORD@HOST:5432/DBNAME`
   - `ZERODHA_SESSION_PATH=server/.zerodha-session.json`
   - `ZERODHA_SERVER_PORT=10000`
+
+For durable Zerodha sessions in production, set `ZERODHA_DATABASE_URL` or `DATABASE_URL` to a Postgres database. The backend will store the broker session there first and only fall back to `ZERODHA_SESSION_PATH` when no database is configured.
 
 ### 4. Update provider settings
 
