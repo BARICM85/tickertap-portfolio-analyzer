@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import OptionChainPanel from '@/components/portfolio/OptionChainPanel';
+import TradingViewEmbed from '@/components/portfolio/TradingViewEmbed';
 import { Button } from '@/components/ui/button';
 import StockAutocompleteInput from '@/components/shared/StockAutocompleteInput';
 import { getStockProfile } from '@/lib/marketData';
@@ -109,6 +110,10 @@ export default function OptionChainPage() {
             </div>
           </div>
         </div>
+      </section>
+
+      <section className="rounded-[36px] border border-white/10 bg-[#0a1018]/95 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.26)]">
+        <TradingViewEmbed stock={stock} title="TradingView Option Desk Chart" compact height={460} />
       </section>
 
       <section className="rounded-[36px] border border-white/10 bg-[#0a1018]/95 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.26)]">

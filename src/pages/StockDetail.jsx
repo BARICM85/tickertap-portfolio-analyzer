@@ -5,6 +5,7 @@ import { ArrowLeft, BarChart3, Building2, Calendar, CircleDollarSign, Layers3, R
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { base44 } from '@/api/base44Client';
+import TradingViewEmbed from '@/components/portfolio/TradingViewEmbed';
 import { derivePortfolioAnalytics, formatCurrency, formatPercent } from '@/lib/portfolioAnalytics';
 
 function Metric({ label, value, note }) {
@@ -143,6 +144,8 @@ export default function StockDetail() {
         <Metric label="Cost Basis" value={formatCurrency(stock.buy_price)} note={`Bought ${stock.buy_date || 'date not set'}`} />
         <Metric label="Position P&L" value={`${positive ? '+' : '-'}${formatCurrency(Math.abs(stock.pnl))}`} note={formatPercent(stock.pnlPercent)} />
       </section>
+
+      <TradingViewEmbed stock={stock} title="TradingView Stock Chart" height={560} />
 
       <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <section className="rounded-[32px] border border-white/10 bg-[#0b1624]/90 p-6">
