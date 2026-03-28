@@ -34,7 +34,6 @@ export default function AppLayout() {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const { user, isAuthenticated, googleConfigured, logout } = useAuth();
-  const hideWorkspaceAccess = ['/StockChart', '/OptionChain'].includes(location.pathname);
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
   const { data: indexPayload } = useQuery({
     queryKey: ['header-indices'],
@@ -191,16 +190,6 @@ export default function AppLayout() {
 
       <div className="relative mx-auto max-w-[1680px] px-4 pb-10 pt-36 lg:px-8 lg:pt-40">
         <main className="relative z-10 min-w-0 pt-2 lg:pt-0">
-          {!hideWorkspaceAccess ? (
-            <div className="mb-6 rounded-[28px] border border-white/8 bg-[#0b1624]/75 px-4 py-4 shadow-[0_18px_60px_rgba(0,0,0,0.2)]">
-              <div>
-                <p className="text-xs uppercase tracking-[0.22em] text-amber-200/80">Workspace Access</p>
-                <p className="mt-1 text-sm text-slate-400">
-                  Use the 3-line menu to switch sections while keeping the main screen maximized.
-                </p>
-              </div>
-            </div>
-          ) : null}
           <Outlet />
         </main>
       </div>
