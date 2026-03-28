@@ -70,11 +70,7 @@ export default function TradingViewEmbed({
         widget.id = widgetId;
         widget.style.height = '100%';
 
-        const script = document.createElement('script');
-        script.type = 'text/javascript';
-        script.src = TRADING_VIEW_SCRIPT;
-        script.async = true;
-        script.text = JSON.stringify({
+        const widgetConfig = {
           autosize: true,
           symbol: tradingViewSymbol,
           interval,
@@ -140,7 +136,13 @@ export default function TradingViewEmbed({
             'linetooltext.color': '#e2e8f0',
             'linetoolellipse.backgroundColor': 'rgba(96,165,250,0.12)',
           },
-        });
+        };
+
+        const script = document.createElement('script');
+        script.type = 'text/javascript';
+        script.src = TRADING_VIEW_SCRIPT;
+        script.async = true;
+        script.textContent = JSON.stringify(widgetConfig);
 
         script.onload = () => {
           if (!disposed) setStatus('ready');
