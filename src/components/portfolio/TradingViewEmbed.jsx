@@ -93,6 +93,11 @@ export default function TradingViewEmbed({
           calendar: false,
           watchlist: false,
           support_host: 'https://www.tradingview.com',
+          enabled_features: ['side_toolbar_in_fullscreen_mode'],
+          favorites: {
+            intervals: ['1', '5', '15', '60', 'D', 'W'],
+            drawingTools: ['trend_line', 'ray', 'horizontal_line', 'arrow', 'text', 'fib_retracement', 'measure'],
+          },
           studies: [
             'RSI@tv-basicstudies',
             'MACD@tv-basicstudies',
@@ -134,6 +139,11 @@ export default function TradingViewEmbed({
             'mainSeriesProperties.hollowCandleStyle.borderDownColor': '#ef4444',
             'mainSeriesProperties.hollowCandleStyle.wickUpColor': '#86efac',
             'mainSeriesProperties.hollowCandleStyle.wickDownColor': '#fca5a5',
+            'linetooltrendline.linecolor': '#60a5fa',
+            'linetoolray.linecolor': '#a78bfa',
+            'linetoolhorzline.linecolor': '#fbbf24',
+            'linetooltext.color': '#e2e8f0',
+            'linetoolellipse.backgroundColor': 'rgba(96,165,250,0.12)',
           },
         });
 
@@ -224,7 +234,8 @@ export default function TradingViewEmbed({
         <span className="rounded-full border border-violet-300/20 bg-violet-300/10 px-3 py-1 text-violet-100">RSI</span>
         <span className="rounded-full border border-orange-300/20 bg-orange-300/10 px-3 py-1 text-orange-100">MACD</span>
         <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-cyan-100">Bollinger Bands</span>
-        <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-slate-300">Left toolbar enabled for trend lines, text, and measurement tools</span>
+        <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-slate-300">Use the left toolbar for trend lines, text, Fibonacci, and measurement tools</span>
+        <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-slate-300">Click any plotted drawing to edit its color and style from the TradingView popover</span>
       </div>
 
       <div className="mt-4 overflow-hidden rounded-[28px] border border-white/8 bg-[#050b14]">
