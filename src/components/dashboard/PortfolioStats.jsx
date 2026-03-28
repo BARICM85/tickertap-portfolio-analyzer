@@ -51,10 +51,10 @@ export default function PortfolioStats({ analytics }) {
       note: formatPercent(totals.totalPnLPercent),
     },
     {
-      title: 'Monthly Income',
-      value: formatCurrency(totals.monthlyIncome),
-      subtitle: 'Estimated dividend cash flow',
-      note: 'Based on current yields',
+      title: 'One Day P&L',
+      value: `${totals.totalDayPnL >= 0 ? '+' : '-'}${formatCompactCurrency(Math.abs(totals.totalDayPnL))}`,
+      subtitle: totals.totalDayPnL >= 0 ? 'Today portfolio is in profit' : 'Today portfolio is in loss',
+      note: 'Calculated from daily price change',
     },
     {
       title: 'Risk Score',

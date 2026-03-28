@@ -97,6 +97,11 @@ export function enrichHolding(stock) {
   const value = quantity * currentPrice;
   const pnl = value - invested;
   const pnlPercent = buyPrice > 0 ? ((currentPrice - buyPrice) / buyPrice) * 100 : 0;
+  const dayChangePercent = toNumber(stock?.day_change_percent, profile.day_change_percent);
+  const previousClose = dayChangePercent === -100
+    ? currentPrice
+    : currentPrice / (1 + (dayChangePercent / 100));
+  const dayPnl = quantity * (currentPrice - previousClose);
   const benchmark = getSectorBenchmark(stock?.sector || profile.sector);
   const monthlyIncome = value * (toNumber(stock?.dividend_yield, profile.dividend_yield) / 100) / 12;
   const convictionScore = Math.max(
@@ -131,6 +136,8 @@ export function enrichHolding(stock) {
     value,
     pnl,
     pnlPercent,
+    day_change_percent: dayChangePercent,
+    dayPnl,
     allocation: 0,
     monthlyIncome,
     benchmark,
@@ -186,6 +193,7 @@ export function derivePortfolioAnalytics(stocks = []) {
   const totalPnL = totalValue - totalInvested;
   const totalPnLPercent = totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0;
   const monthlyIncome = holdings.reduce((sum, row) => sum + row.monthlyIncome, 0);
+  const totalDayPnL = holdings.reduce((sum, row) => sum + row.dayPnl, 0);
   const weightedBeta = totalValue > 0
     ? holdings.reduce((sum, row) => sum + (row.value * row.beta), 0) / totalValue
     : 0;
@@ -247,6 +255,7 @@ export function derivePortfolioAnalytics(stocks = []) {
       totalValue,
       totalPnL,
       totalPnLPercent,
+      totalDayPnL,
       monthlyIncome,
       weightedBeta,
       diversificationScore,
