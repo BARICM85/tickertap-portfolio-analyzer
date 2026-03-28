@@ -660,6 +660,43 @@ async function fetchLiveQuote(symbol) {
   throw new Error(`No live quote available for ${candidates.join(', ')}.`);
 }
 
+const INDEX_CATALOG = [
+  { key: 'nifty50', symbol: '^NSEI', label: 'NIFTY 50' },
+  { key: 'banknifty', symbol: '^NSEBANK', label: 'BANK NIFTY' },
+  { key: 'niftyit', symbol: '^CNXIT', label: 'NIFTY IT' },
+  { key: 'niftyauto', symbol: '^CNXAUTO', label: 'NIFTY AUTO' },
+  { key: 'niftypharma', symbol: '^CNXPHARMA', label: 'NIFTY PHARMA' },
+  { key: 'niftyfmcg', symbol: '^CNXFMCG', label: 'NIFTY FMCG' },
+  { key: 'niftymetal', symbol: '^CNXMETAL', label: 'NIFTY METAL' },
+  { key: 'niftyrealty', symbol: '^CNXREALTY', label: 'NIFTY REALTY' },
+];
+
+async function fetchIndexQuotes() {
+  const results = await Promise.all(
+    INDEX_CATALOG.map(async (item) => {
+      try {
+        const response = await fetchLiveQuote(item.symbol);
+        return {
+          key: item.key,
+          label: item.label,
+          symbol: item.symbol,
+          price: response.price,
+          changePercent: response.changePercent,
+          source: response.source,
+          currency: response.currency || 'INR',
+        };
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  return {
+    updatedAt: new Date().toISOString(),
+    items: results.filter(Boolean),
+  };
+}
+
 async function fetchMarketHistory(symbol, range = '6mo', interval = '1d') {
   try {
     return await fetchZerodhaHistory(symbol, 'NSE', range, interval);
@@ -767,6 +804,11 @@ const server = createServer(async (req, res) => {
       const symbol = url.searchParams.get('symbol') || '';
       const quote = await fetchLiveQuote(symbol);
       return sendJson(res, 200, quote);
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/market/indices') {
+      const payload = await fetchIndexQuotes();
+      return sendJson(res, 200, payload);
     }
 
     if (req.method === 'GET' && url.pathname === '/api/market/history') {

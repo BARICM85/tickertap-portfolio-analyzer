@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { BarChart3, Briefcase, Eye, LogOut, Menu, Shield, Sparkles, TrendingUp, UserCircle2, X } from 'lucide-react';
 import GoogleSignInButton from '@/components/auth/GoogleSignInButton';
 import { useAuth } from '@/lib/AuthContext';
+import { formatCurrency } from '@/lib/portfolioAnalytics';
 
 const NAV_ITEMS = [
   { path: '/Dashboard', label: 'Dashboard', icon: BarChart3 },
@@ -33,6 +35,17 @@ export default function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { user, isAuthenticated, googleConfigured, logout } = useAuth();
   const hideWorkspaceAccess = ['/StockChart', '/OptionChain'].includes(location.pathname);
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+  const { data: indexPayload } = useQuery({
+    queryKey: ['header-indices'],
+    refetchInterval: 60000,
+    queryFn: async () => {
+      const response = await fetch(`${apiBaseUrl}/api/market/indices`);
+      if (!response.ok) throw new Error('Unable to load index quotes.');
+      return response.json();
+    },
+  });
+  const indexItems = indexPayload?.items || [];
 
   return (
     <div className="min-h-screen bg-[#07111c] text-white">
@@ -89,6 +102,31 @@ export default function AppLayout() {
             ) : null}
           </div>
         </div>
+
+        <div className="border-t border-white/6">
+          <div className="mx-auto max-w-[1680px] px-4 py-2 lg:px-8">
+            <div className="flex gap-3 overflow-x-auto whitespace-nowrap pb-1 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-track]:bg-transparent">
+              {indexItems.length ? indexItems.map((item) => {
+                const positive = Number(item.changePercent || 0) >= 0;
+                return (
+                  <div key={item.key} className="flex min-w-fit items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-300">{item.label}</p>
+                      <p className="mt-1 text-sm font-semibold text-white">{formatCurrency(item.price, item.currency || 'INR').replace('.00', '')}</p>
+                    </div>
+                    <div className={`rounded-xl px-2 py-1 text-xs font-semibold ${positive ? 'bg-emerald-400/15 text-emerald-300' : 'bg-rose-400/15 text-rose-300'}`}>
+                      {positive ? '+' : ''}{Number(item.changePercent || 0).toFixed(2)}%
+                    </div>
+                  </div>
+                );
+              }) : (
+                <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 text-sm text-slate-400">
+                  Loading NSE indices...
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </header>
 
       {mobileOpen ? (
@@ -142,7 +180,7 @@ export default function AppLayout() {
         </div>
       ) : null}
 
-      <div className="relative mx-auto max-w-[1680px] px-4 pb-10 pt-24 lg:px-8 lg:pt-28">
+      <div className="relative mx-auto max-w-[1680px] px-4 pb-10 pt-36 lg:px-8 lg:pt-40">
         <main className="relative z-10 min-w-0 pt-2 lg:pt-0">
           {!hideWorkspaceAccess ? (
             <div className="mb-6 rounded-[28px] border border-white/8 bg-[#0b1624]/75 px-4 py-4 shadow-[0_18px_60px_rgba(0,0,0,0.2)]">
