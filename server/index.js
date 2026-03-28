@@ -404,6 +404,21 @@ function buildZerodhaDateRange(range = '6mo', interval = 'day') {
   };
 }
 
+function getZerodhaChunkDays(interval = 'day') {
+  const limits = {
+    minute: 60,
+    '3minute': 100,
+    '5minute': 100,
+    '10minute': 100,
+    '15minute': 200,
+    '30minute': 200,
+    '60minute': 400,
+    day: 2000,
+  };
+
+  return limits[interval] || 60;
+}
+
 function mapRequestedInterval(requestedInterval = 'day', range = '1d') {
   const normalized = requestedInterval.toLowerCase();
   const allowed = new Set(['minute', '3minute', '5minute', '10minute', '15minute', '30minute', '60minute', 'day']);
@@ -471,12 +486,30 @@ async function fetchZerodhaHistory(symbol, exchange = 'NSE', range = '6mo', requ
 
   const interval = mapRequestedInterval(requestedInterval, range);
   const { from, to } = buildZerodhaDateRange(range, interval);
-  const response = await kiteRequest(
-    `/instruments/historical/${instrument.instrument_token}/${interval}?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}&oi=0`,
-  );
+  const chunkDays = getZerodhaChunkDays(interval);
+  const candles = [];
+  let cursor = new Date(from);
 
-  const candles = response?.data?.candles || [];
-  const points = candles
+  while (cursor <= to) {
+    const chunkEnd = new Date(
+      Math.min(
+        to.getTime(),
+        cursor.getTime() + (chunkDays * 24 * 60 * 60 * 1000) - 1000,
+      ),
+    );
+
+    const response = await kiteRequest(
+      `/instruments/historical/${instrument.instrument_token}/${interval}?from=${encodeURIComponent(cursor.toISOString())}&to=${encodeURIComponent(chunkEnd.toISOString())}&oi=0`,
+    );
+
+    candles.push(...(response?.data?.candles || []));
+    cursor = new Date(chunkEnd.getTime() + 1000);
+  }
+
+  const uniqueCandles = [...new Map(
+    candles.map((entry) => [new Date(entry[0]).toISOString(), entry]),
+  ).values()];
+  const points = uniqueCandles
     .map((entry) => ({
       date: new Date(entry[0]).toISOString(),
       open: Number(entry[1]),
