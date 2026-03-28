@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Expand, Minimize2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -22,16 +22,9 @@ const RANGE_OPTIONS = ['1D', '5D', '1M', '3M', '6M', 'YTD', '12M', '60M', 'ALL']
 function normalizeTradingViewSymbol(stock) {
   const rawSymbol = String(stock?.symbol || '').trim().toUpperCase();
   if (!rawSymbol) return 'NSE:NIFTY';
-
   if (rawSymbol.includes(':')) return rawSymbol;
-
   const exchange = String(stock?.exchange || '').toUpperCase();
-  if (exchange.includes('BSE')) return `BSE:${rawSymbol}`;
-  return `NSE:${rawSymbol}`;
-}
-
-function loadTradingViewScript() {
-  return Promise.resolve();
+  return exchange.includes('BSE') ? `BSE:${rawSymbol}` : `NSE:${rawSymbol}`;
 }
 
 export default function TradingViewEmbed({
@@ -42,145 +35,114 @@ export default function TradingViewEmbed({
   height = 520,
   compact = false,
 }) {
-  const reactId = useId();
-  const widgetId = useMemo(() => `tv_${reactId.replace(/[:]/g, '')}`, [reactId]);
-  const hostRef = useRef(null);
+  const containerRef = useRef(null);
+  const widgetRef = useRef(null);
   const [interval, setInterval] = useState(defaultInterval);
   const [range, setRange] = useState(defaultRange);
   const [status, setStatus] = useState('loading');
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const tradingViewSymbol = normalizeTradingViewSymbol(stock);
+  const tradingViewSymbol = useMemo(() => normalizeTradingViewSymbol(stock), [stock]);
 
   useEffect(() => {
-    let disposed = false;
+    const container = containerRef.current;
+    const widget = widgetRef.current;
+    if (!container || !widget) return;
 
-    async function mountWidget() {
-      setStatus('loading');
-      try {
-        await loadTradingViewScript();
-        if (disposed || !hostRef.current) return;
+    setStatus('loading');
 
-        const widgetConfig = {
-          autosize: true,
-          symbol: tradingViewSymbol,
-          interval,
-          range,
-          timezone: 'Asia/Kolkata',
-          theme: 'dark',
-          style: '1',
-          locale: 'en',
-          hide_top_toolbar: false,
-          withdateranges: true,
-          hide_side_toolbar: false,
-          hide_legend: false,
-          allow_symbol_change: true,
-          save_image: false,
-          details: true,
-          calendar: false,
-          watchlist: false,
-          support_host: 'https://www.tradingview.com',
-          studies: [
-            'RSI@tv-basicstudies',
-            'MACD@tv-basicstudies',
-            'Bollinger Bands@tv-basicstudies',
-            'MASimple@tv-basicstudies',
-            'MASimple@tv-basicstudies',
-            'MASimple@tv-basicstudies',
-          ],
-          studies_overrides: {
-            'volume.volume.color.0': '#ef4444',
-            'volume.volume.color.1': '#22c55e',
-            'moving average.plot.color': '#22c55e',
-            'moving average.plot.linewidth': 2,
-            'bollinger bands.median.color': '#22c55e',
-            'bollinger bands.upper.linewidth': 1,
-            'bollinger bands.lower.linewidth': 1,
-            'bollinger bands.upper.color': '#60a5fa',
-            'bollinger bands.lower.color': '#60a5fa',
-            'rsi.plot.color': '#a78bfa',
-            'macd.macd.color': '#60a5fa',
-            'macd.signal.color': '#f97316',
-            'macd.histogram.color': '#22c55e',
-          },
-          overrides: {
-            'paneProperties.background': '#050b14',
-            'paneProperties.vertGridProperties.color': 'rgba(148, 163, 184, 0.08)',
-            'paneProperties.horzGridProperties.color': 'rgba(148, 163, 184, 0.08)',
-            'scalesProperties.textColor': '#d6e2f2',
-            'scalesProperties.fontSize': 13,
-            'mainSeriesProperties.candleStyle.upColor': '#22c55e',
-            'mainSeriesProperties.candleStyle.downColor': '#ef4444',
-            'mainSeriesProperties.candleStyle.borderUpColor': '#22c55e',
-            'mainSeriesProperties.candleStyle.borderDownColor': '#ef4444',
-            'mainSeriesProperties.candleStyle.wickUpColor': '#86efac',
-            'mainSeriesProperties.candleStyle.wickDownColor': '#fca5a5',
-            'mainSeriesProperties.hollowCandleStyle.upColor': '#22c55e',
-            'mainSeriesProperties.hollowCandleStyle.downColor': '#ef4444',
-            'mainSeriesProperties.hollowCandleStyle.borderUpColor': '#22c55e',
-            'mainSeriesProperties.hollowCandleStyle.borderDownColor': '#ef4444',
-            'mainSeriesProperties.hollowCandleStyle.wickUpColor': '#86efac',
-            'mainSeriesProperties.hollowCandleStyle.wickDownColor': '#fca5a5',
-            'linetooltrendline.linecolor': '#60a5fa',
-            'linetoolray.linecolor': '#a78bfa',
-            'linetoolhorzline.linecolor': '#fbbf24',
-            'linetooltext.color': '#e2e8f0',
-            'linetoolellipse.backgroundColor': 'rgba(96,165,250,0.12)',
-          },
-        };
-        const configJson = JSON.stringify(widgetConfig);
+    const oldScripts = container.querySelectorAll(`script[src="${TRADING_VIEW_SCRIPT}"]`);
+    oldScripts.forEach((node) => node.remove());
+    widget.innerHTML = '';
 
-        hostRef.current.innerHTML = `
-          <div class="tradingview-widget-container" style="height:100%">
-            <div id="${widgetId}" class="tradingview-widget-container__widget" style="height:100%"></div>
-            <script type="text/javascript" src="${TRADING_VIEW_SCRIPT}" async>${configJson}</script>
-          </div>
-        `;
-
-        const script = hostRef.current.querySelector(`script[src="${TRADING_VIEW_SCRIPT}"]`);
-        if (script) {
-          script.addEventListener('load', () => {
-            if (!disposed) setStatus('ready');
-          }, { once: true });
-          script.addEventListener('error', () => {
-            if (!disposed) setStatus('error');
-          }, { once: true });
-        } else {
-          setStatus('error');
-        }
-      } catch {
-        if (!disposed) {
-          setStatus('error');
-        }
-      }
-    }
-
-    mountWidget();
-    return () => {
-      disposed = true;
+    const config = {
+      autosize: true,
+      symbol: tradingViewSymbol,
+      interval,
+      range,
+      timezone: 'Asia/Kolkata',
+      theme: 'dark',
+      style: '1',
+      locale: 'en',
+      withdateranges: true,
+      hide_side_toolbar: false,
+      hide_top_toolbar: false,
+      hide_legend: false,
+      allow_symbol_change: true,
+      save_image: false,
+      details: true,
+      calendar: false,
+      watchlist: false,
+      studies: [
+        'RSI@tv-basicstudies',
+        'MACD@tv-basicstudies',
+        'Bollinger Bands@tv-basicstudies',
+        'MASimple@tv-basicstudies',
+        'MASimple@tv-basicstudies',
+        'MASimple@tv-basicstudies',
+      ],
+      studies_overrides: {
+        'volume.volume.color.0': '#ef4444',
+        'volume.volume.color.1': '#22c55e',
+        'moving average.plot.color': '#22c55e',
+        'moving average.plot.linewidth': 2,
+        'bollinger bands.median.color': '#22c55e',
+        'bollinger bands.upper.color': '#60a5fa',
+        'bollinger bands.lower.color': '#60a5fa',
+        'rsi.plot.color': '#a78bfa',
+        'macd.macd.color': '#60a5fa',
+        'macd.signal.color': '#f97316',
+      },
+      overrides: {
+        'paneProperties.background': '#050b14',
+        'paneProperties.vertGridProperties.color': 'rgba(148, 163, 184, 0.08)',
+        'paneProperties.horzGridProperties.color': 'rgba(148, 163, 184, 0.08)',
+        'scalesProperties.textColor': '#d6e2f2',
+        'scalesProperties.fontSize': 13,
+        'mainSeriesProperties.candleStyle.upColor': '#22c55e',
+        'mainSeriesProperties.candleStyle.downColor': '#ef4444',
+        'mainSeriesProperties.candleStyle.borderUpColor': '#22c55e',
+        'mainSeriesProperties.candleStyle.borderDownColor': '#ef4444',
+        'mainSeriesProperties.candleStyle.wickUpColor': '#86efac',
+        'mainSeriesProperties.candleStyle.wickDownColor': '#fca5a5',
+        'mainSeriesProperties.hollowCandleStyle.upColor': '#22c55e',
+        'mainSeriesProperties.hollowCandleStyle.downColor': '#ef4444',
+        'mainSeriesProperties.hollowCandleStyle.borderUpColor': '#22c55e',
+        'mainSeriesProperties.hollowCandleStyle.borderDownColor': '#ef4444',
+        'mainSeriesProperties.hollowCandleStyle.wickUpColor': '#86efac',
+        'mainSeriesProperties.hollowCandleStyle.wickDownColor': '#fca5a5',
+      },
+      support_host: 'https://www.tradingview.com',
     };
-  }, [compact, interval, range, tradingViewSymbol, widgetId]);
 
-  const cardHeight = isFullscreen ? window.innerHeight - 120 : compact ? Math.min(height, 520) : height;
+    const script = document.createElement('script');
+    script.src = TRADING_VIEW_SCRIPT;
+    script.type = 'text/javascript';
+    script.async = true;
+    script.innerHTML = JSON.stringify(config, null, 2);
+    script.onload = () => setStatus('ready');
+    script.onerror = () => setStatus('error');
+    container.appendChild(script);
+
+    return () => {
+      script.remove();
+    };
+  }, [interval, range, tradingViewSymbol]);
+
+  const cardHeight = isFullscreen ? 'calc(100vh - 150px)' : `${compact ? Math.min(height, 520) : height}px`;
 
   return (
-    <section className={`${isFullscreen ? 'fixed inset-3 z-50 overflow-hidden rounded-[32px]' : 'rounded-[32px]'} border border-white/10 bg-[#07111c]/95 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.26)]`}>
+    <section className={`${isFullscreen ? 'fixed inset-3 z-50 overflow-auto rounded-[32px]' : 'rounded-[32px]'} border border-white/10 bg-[#07111c]/95 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.26)]`}>
       <div className={`${isFullscreen ? 'sticky top-0 z-10 rounded-[24px] bg-[#07111c]/95 pb-3' : ''} flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between`}>
         <div>
           <p className="text-xs uppercase tracking-[0.22em] text-amber-200/70">{title}</p>
           <h2 className="mt-2 text-xl font-semibold text-white">{stock?.symbol} on TradingView</h2>
-          <p className="mt-1 text-sm text-slate-400">
-            Symbol {tradingViewSymbol} with TradingView drawing tools, richer ranges, and built-in studies.
-          </p>
+          <p className="mt-1 text-sm text-slate-400">Symbol {tradingViewSymbol} with TradingView charting, studies, and drawing tools.</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-slate-300">
             Interval
-            <select
-              value={interval}
-              onChange={(event) => setInterval(event.target.value)}
-              className="bg-transparent text-white outline-none"
-            >
+            <select value={interval} onChange={(event) => setInterval(event.target.value)} className="bg-transparent text-white outline-none">
               {INTERVAL_OPTIONS.map((item) => (
                 <option key={item.value} value={item.value} className="bg-[#07111c] text-white">
                   {item.label}
@@ -190,11 +152,7 @@ export default function TradingViewEmbed({
           </label>
           <label className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-slate-300">
             Range
-            <select
-              value={range}
-              onChange={(event) => setRange(event.target.value)}
-              className="bg-transparent text-white outline-none"
-            >
+            <select value={range} onChange={(event) => setRange(event.target.value)} className="bg-transparent text-white outline-none">
               {RANGE_OPTIONS.map((item) => (
                 <option key={item} value={item} className="bg-[#07111c] text-white">
                   {item}
@@ -224,15 +182,19 @@ export default function TradingViewEmbed({
         <span className="rounded-full border border-violet-300/20 bg-violet-300/10 px-3 py-1 text-violet-100">RSI</span>
         <span className="rounded-full border border-orange-300/20 bg-orange-300/10 px-3 py-1 text-orange-100">MACD</span>
         <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-cyan-100">Bollinger Bands</span>
-        <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-slate-300">Use the chart&apos;s left toolbar for trend lines, text, Fibonacci, and measurement tools</span>
-        <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-slate-300">Click any plotted drawing to edit its color and style from the TradingView popover</span>
       </div>
 
-      <div className="mt-4 overflow-hidden rounded-[28px] border border-white/8 bg-[#050b14]">
-        <div ref={hostRef} style={{ height: `${cardHeight}px` }} />
+      <div ref={containerRef} className="tradingview-widget-container mt-4 overflow-hidden rounded-[28px] border border-white/8 bg-[#050b14]" style={{ height: cardHeight }}>
+        <div ref={widgetRef} className="tradingview-widget-container__widget" style={{ height: 'calc(100% - 32px)', width: '100%' }} />
+        <div className="tradingview-widget-copyright px-4 py-2 text-xs text-slate-500">
+          <a href={`https://www.tradingview.com/symbols/${tradingViewSymbol.replace(':', '-')}/`} target="_blank" rel="noopener nofollow" className="text-cyan-300">
+            {stock?.symbol} chart
+          </a>{' '}
+          by TradingView
+        </div>
         {status === 'error' ? (
           <div className="border-t border-white/8 bg-[#07111c] px-4 py-3 text-sm text-slate-400">
-            TradingView chart could not load for {tradingViewSymbol}. Try switching symbol or refresh the page.
+            TradingView chart could not load for {tradingViewSymbol}. Try refreshing the page.
           </div>
         ) : null}
       </div>
