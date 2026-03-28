@@ -27,7 +27,7 @@ const env = {
   ...process.env,
 };
 
-const PORT = Number(env.PORT || env.ZERODHA_SERVER_PORT || 8000);
+const PORT = Number(env.ZERODHA_SERVER_PORT || 8000);
 const API_KEY = env.ZERODHA_API_KEY || '';
 const API_SECRET = env.ZERODHA_API_SECRET || '';
 const FRONTEND_URL = env.ZERODHA_FRONTEND_URL || 'http://localhost:5173';
@@ -321,7 +321,7 @@ function buildZerodhaDateRange(range = '6mo', interval = 'day') {
   } else if (range === 'ytd') {
     from.setMonth(0, 1);
     from.setHours(0, 0, 0, 0);
-  } else if (range === 'max') {
+  } else if (range === 'all') {
     from.setFullYear(to.getFullYear() - 15);
   }
 
@@ -345,6 +345,8 @@ function mapRequestedInterval(requestedInterval = 'day', range = '1d') {
   if (normalized === '30m') return '30minute';
   if (normalized === '60m' || normalized === '1h') return '60minute';
   if (normalized === '180m' || normalized === '3h') return '60minute';
+  if (normalized === '1d') return 'day';
+  if (normalized === '1w' || normalized === '1mo') return 'day';
 
   if (range === '1d') return '5minute';
   if (range === '5d') return '15minute';
@@ -374,6 +376,8 @@ function mapYahooInterval(requestedInterval = '1d', range = '1d') {
     ['3h', '1h'],
     ['day', '1d'],
     ['1d', '1d'],
+    ['1w', '1wk'],
+    ['1mo', '1mo'],
     ['5d', '5d'],
   ]);
 
@@ -383,6 +387,7 @@ function mapYahooInterval(requestedInterval = '1d', range = '1d') {
 
   if (range === '1d') return '5m';
   if (range === '5d') return '15m';
+  if (range === 'all') return '1mo';
   return '1d';
 }
 
@@ -669,7 +674,7 @@ async function fetchMarketHistory(symbol, range = '6mo', interval = '1d') {
 
   for (const candidate of candidates) {
     const url = new URL(`https://query1.finance.yahoo.com/v8/finance/chart/${candidate}`);
-    url.searchParams.set('range', range);
+    url.searchParams.set('range', range === 'all' ? 'max' : range);
     url.searchParams.set('interval', mapYahooInterval(interval, range));
     url.searchParams.set('includePrePost', 'false');
     url.searchParams.set('events', 'div,splits');
@@ -735,18 +740,6 @@ const server = createServer(async (req, res) => {
   }
 
   try {
-    if (req.method === 'GET' && url.pathname === '/') {
-      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-      res.end('TickerTap backend is running.');
-      return;
-    }
-
-    if (req.method === 'GET' && url.pathname === '/favicon.ico') {
-      res.writeHead(204);
-      res.end();
-      return;
-    }
-
     if (req.method === 'GET' && url.pathname === '/api/health') {
       return sendJson(res, 200, { ok: true });
     }

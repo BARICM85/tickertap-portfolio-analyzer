@@ -13,16 +13,26 @@ const RANGE_OPTIONS = [
   { label: '5D', value: '5d' },
   { label: '1M', value: '1mo' },
   { label: '3M', value: '3mo' },
+  { label: '6M', value: '6mo' },
+  { label: 'YTD', value: 'ytd' },
+  { label: '1Y', value: '1y' },
+  { label: '3Y', value: '3y' },
+  { label: '5Y', value: '5y' },
+  { label: 'ALL', value: 'all' },
 ];
 
 const INTERVAL_OPTIONS = [
   { label: '1m', value: '1m' },
   { label: '3m', value: '3m' },
   { label: '5m', value: '5m' },
+  { label: '10m', value: '10m' },
   { label: '15m', value: '15m' },
   { label: '30m', value: '30m' },
   { label: '1h', value: '60m' },
   { label: '3h', value: '180m' },
+  { label: '1D', value: '1d' },
+  { label: '1W', value: '1w' },
+  { label: '1M', value: '1mo' },
 ];
 
 const CHART_TYPE_OPTIONS = [
@@ -43,6 +53,26 @@ const DEFAULT_TOGGLES = {
   vwap: true,
   volume: true,
   compare: false,
+};
+
+const DEFAULT_STYLE = {
+  bullishColor: '#16A34A',
+  bearishColor: '#DC2626',
+  wickBullishColor: '#22C55E',
+  wickBearishColor: '#F43F5E',
+  candleWidth: 0.72,
+  candleSharpness: 1.2,
+  lineColor: '#F8FAFC',
+  lineWidth: 2,
+  sma20Width: 1.7,
+  sma50Width: 1.7,
+  sma200Width: 1.7,
+  vwapWidth: 1.7,
+  sma20Color: '#22D3EE',
+  sma50Color: '#C084FC',
+  sma200Color: '#34D399',
+  vwapColor: '#38BDF8',
+  bollingerColor: '#94A3B8',
 };
 
 const DRAWING_STORAGE_KEY = namespacedKey('portfolio_analyzer_chart_layouts');
@@ -187,6 +217,30 @@ function buildFibonacciLevels(points = []) {
 }
 
 function aggregateCandles(points = [], bucketSize = 1) {
+  if (bucketSize === 'week' || bucketSize === 'month') {
+    const buckets = new Map();
+
+    points.forEach((point) => {
+      const date = new Date(point.date);
+      const key = bucketSize === 'week'
+        ? `${date.getUTCFullYear()}-W${Math.floor((((date - new Date(Date.UTC(date.getUTCFullYear(), 0, 1))) / 86400000) + new Date(Date.UTC(date.getUTCFullYear(), 0, 1)).getUTCDay() + 1) / 7)}`
+        : `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}`;
+
+      const existing = buckets.get(key);
+      if (!existing) {
+        buckets.set(key, { ...point });
+        return;
+      }
+
+      existing.high = Math.max(existing.high, point.high);
+      existing.low = Math.min(existing.low, point.low);
+      existing.close = point.close;
+      existing.volume = (existing.volume || 0) + (point.volume || 0);
+    });
+
+    return [...buckets.values()];
+  }
+
   if (bucketSize <= 1) return points;
   const result = [];
 
@@ -215,6 +269,8 @@ function getIntervalConfig(interval) {
       return { requestInterval: '3minute', aggregate: 1, refreshMs: 15000 };
     case '5m':
       return { requestInterval: '5minute', aggregate: 1, refreshMs: 20000 };
+    case '10m':
+      return { requestInterval: '10minute', aggregate: 1, refreshMs: 25000 };
     case '15m':
       return { requestInterval: '15minute', aggregate: 1, refreshMs: 30000 };
     case '30m':
@@ -223,6 +279,12 @@ function getIntervalConfig(interval) {
       return { requestInterval: '60minute', aggregate: 1, refreshMs: 60000 };
     case '180m':
       return { requestInterval: '60minute', aggregate: 3, refreshMs: 60000 };
+    case '1w':
+      return { requestInterval: 'day', aggregate: 'week', refreshMs: 90000 };
+    case '1mo':
+      return { requestInterval: 'day', aggregate: 'month', refreshMs: 90000 };
+    case '1d':
+      return { requestInterval: 'day', aggregate: 1, refreshMs: 60000 };
     default:
       return { requestInterval: 'day', aggregate: 1, refreshMs: 60000 };
   }
@@ -230,8 +292,11 @@ function getIntervalConfig(interval) {
 
 function formatDateLabel(dateString, range, interval) {
   const date = new Date(dateString);
-  if (range === '1d' || ['1m', '3m', '5m', '15m', '30m', '60m', '180m'].includes(interval)) {
+  if (range === '1d' || ['1m', '3m', '5m', '10m', '15m', '30m', '60m', '180m'].includes(interval)) {
     return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  }
+  if (interval === '1mo') {
+    return date.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
   }
   return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
 }
@@ -257,38 +322,59 @@ function buildCompareSeries(primaryPoints = [], compareSeries = []) {
   });
 }
 
-function CandleShape(props) {
-  const {
-    x, width, yAxis, payload, mode = 'candles',
-  } = props;
+function CandleOverlay({
+  data = [],
+  domain = ['auto', 'auto'],
+  width = 0,
+  height = 0,
+  yAxisWidth = 96,
+  mode = 'candles',
+  style = DEFAULT_STYLE,
+}) {
+  if (!data.length || !width || !height || !Array.isArray(domain) || domain.length < 2) return null;
+  const min = Number(domain[0]);
+  const max = Number(domain[1]);
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return null;
 
-  if (!payload || !yAxis?.scale) return null;
-
-  const candleWidth = Math.max(4, Math.min(width * 0.66, 12));
-  const centerX = x + (width / 2);
-  const openY = yAxis.scale(payload.open);
-  const closeY = yAxis.scale(payload.close);
-  const highY = yAxis.scale(payload.high);
-  const lowY = yAxis.scale(payload.low);
-  const bodyY = Math.min(openY, closeY);
-  const bodyHeight = Math.max(1, Math.abs(closeY - openY));
-  const color = payload.bullish ? '#10B981' : '#F43F5E';
-  const fill = mode === 'hollow' && payload.bullish ? 'rgba(0,0,0,0)' : color;
+  const margin = { top: 10, right: 16 + yAxisWidth, bottom: 26, left: 8 };
+  const innerWidth = Math.max(width - margin.left - margin.right, 1);
+  const innerHeight = Math.max(height - margin.top - margin.bottom, 1);
+  const slotWidth = innerWidth / Math.max(data.length, 1);
+  const candleWidth = Math.max(4, Math.min(slotWidth * (style.candleWidth || 0.72), 16));
+  const priceToY = (price) => margin.top + (((max - price) / (max - min)) * innerHeight);
 
   return (
-    <g>
-      <line x1={centerX} x2={centerX} y1={highY} y2={lowY} stroke={color} strokeWidth={1.3} />
-      <rect
-        x={centerX - (candleWidth / 2)}
-        y={bodyY}
-        width={candleWidth}
-        height={bodyHeight}
-        rx={1.5}
-        fill={fill}
-        stroke={color}
-        strokeWidth={1.2}
-      />
-    </g>
+    <svg className="pointer-events-none absolute inset-0 z-[1]" width={width} height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+      {data.map((point, index) => {
+        const centerX = margin.left + (slotWidth * index) + (slotWidth / 2);
+        const openY = priceToY(point.open);
+        const closeY = priceToY(point.close);
+        const highY = priceToY(point.high);
+        const lowY = priceToY(point.low);
+        const bodyY = Math.min(openY, closeY);
+        const bodyHeight = Math.max(1.5, Math.abs(closeY - openY));
+        const bullish = point.close >= point.open;
+        const wickColor = bullish ? style.wickBullishColor : style.wickBearishColor;
+        const bodyFill = bullish ? style.bullishColor : style.bearishColor;
+        const fill = mode === 'hollow' && bullish ? 'rgba(0,0,0,0)' : bodyFill;
+
+        return (
+          <g key={`${point.date}-${index}`}>
+            <line x1={centerX} x2={centerX} y1={highY} y2={lowY} stroke={wickColor} strokeWidth={Math.max(1.1, style.candleSharpness || 1.2)} />
+            <rect
+              x={centerX - (candleWidth / 2)}
+              y={bodyY}
+              width={candleWidth}
+              height={bodyHeight}
+              rx={1.2}
+              fill={fill}
+              stroke={wickColor}
+              strokeWidth={Math.max(1.1, style.candleSharpness || 1.2)}
+            />
+          </g>
+        );
+      })}
+    </svg>
   );
 }
 
@@ -303,9 +389,6 @@ function ChartTooltip({ active, payload, label, currency = 'INR', compareSymbol 
       <p className="text-slate-300">H {formatCurrency(point.high, currency)}</p>
       <p className="text-slate-300">L {formatCurrency(point.low, currency)}</p>
       <p className="text-amber-300">C {formatCurrency(point.close, currency)}</p>
-      {point.sma20 ? <p className="text-cyan-300">SMA 20 {formatCurrency(point.sma20, currency)}</p> : null}
-      {point.sma50 ? <p className="text-violet-300">SMA 50 {formatCurrency(point.sma50, currency)}</p> : null}
-      {point.sma200 ? <p className="text-emerald-300">SMA 200 {formatCurrency(point.sma200, currency)}</p> : null}
       {point.rsi14 ? <p className="text-rose-300">RSI 14 {point.rsi14.toFixed(2)}</p> : null}
       {compareSymbol && point.compareCloseScaled ? <p className="text-cyan-200">Compare {compareSymbol}</p> : null}
     </div>
@@ -314,6 +397,7 @@ function ChartTooltip({ active, payload, label, currency = 'INR', compareSymbol 
 
 export default function MarketHistoryChart({ stock, onStockSelect }) {
   const chartWrapRef = useRef(null);
+  const chartViewportRef = useRef(null);
   const dragZoomRef = useRef({ active: false, startY: 0, startZoom: 1 });
   const savedLayout = useMemo(() => getLayoutForStock(stock?.id), [stock?.id]);
   const [range, setRange] = useState(savedLayout?.range || '1d');
@@ -325,6 +409,18 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
   const [chartType, setChartType] = useState(savedLayout?.chartType || 'candles');
   const [drawMode, setDrawMode] = useState(savedLayout?.drawMode || 'cursor');
   const [priceZoom, setPriceZoom] = useState(savedLayout?.priceZoom ?? 1);
+  const [chartViewportWidth, setChartViewportWidth] = useState(0);
+  const [showAppearance, setShowAppearance] = useState(savedLayout?.showAppearance ?? false);
+  const [chartStyle, setChartStyle] = useState({ ...DEFAULT_STYLE, ...(savedLayout?.chartStyle || {}) });
+  const [markerVisibility, setMarkerVisibility] = useState({
+    last: savedLayout?.markerVisibility?.last ?? true,
+    sma20: savedLayout?.markerVisibility?.sma20 ?? true,
+    sma50: savedLayout?.markerVisibility?.sma50 ?? true,
+    sma200: savedLayout?.markerVisibility?.sma200 ?? true,
+    vwap: savedLayout?.markerVisibility?.vwap ?? true,
+    pivot: savedLayout?.markerVisibility?.pivot ?? true,
+    level: savedLayout?.markerVisibility?.level ?? true,
+  });
   const [toggles, setToggles] = useState({ ...DEFAULT_TOGGLES, ...(savedLayout?.toggles || {}) });
   const [searchInput, setSearchInput] = useState(stock?.symbol || '');
   const [compareInput, setCompareInput] = useState(savedLayout?.compareSymbol || '');
@@ -336,7 +432,7 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
   const intervalConfig = getIntervalConfig(interval);
 
   useEffect(() => {
-    if (['1m', '3m', '5m'].includes(interval) && !['1d', '5d'].includes(range)) {
+    if (['1m', '3m', '5m', '10m'].includes(interval) && !['1d', '5d'].includes(range)) {
       setRange('1d');
       return;
     }
@@ -346,6 +442,10 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
     }
     if (['60m', '180m'].includes(interval) && !['1d', '5d', '1mo', '3mo'].includes(range)) {
       setRange('1mo');
+      return;
+    }
+    if (interval === '1w' && range === '1d') {
+      setRange('3mo');
     }
   }, [interval, range]);
 
@@ -384,9 +484,12 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
       autoRefresh,
       expanded,
       showTools,
+      showAppearance,
       chartType,
       drawMode,
       priceZoom,
+      chartStyle,
+      markerVisibility,
       compareSymbol,
       toggles,
       drawings: {
@@ -395,7 +498,7 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
         trendEnd: trendEndInput ? Number(trendEndInput) : null,
       },
     });
-  }, [autoRefresh, chartType, compareSymbol, drawMode, expanded, horizontalLineInput, interval, priceZoom, range, showTools, stock?.id, toggles, trendEndInput, trendStartInput]);
+  }, [autoRefresh, chartStyle, chartType, compareSymbol, drawMode, expanded, horizontalLineInput, interval, markerVisibility, priceZoom, range, showAppearance, showTools, stock?.id, toggles, trendEndInput, trendStartInput]);
 
   useEffect(() => {
     if (!fullWindow) return undefined;
@@ -405,6 +508,19 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
       document.body.style.overflow = previousOverflow;
     };
   }, [fullWindow]);
+
+  useEffect(() => {
+    if (!chartViewportRef.current || typeof ResizeObserver === 'undefined') return undefined;
+
+    const updateSize = () => {
+      setChartViewportWidth(chartViewportRef.current?.clientWidth || 0);
+    };
+
+    updateSize();
+    const observer = new ResizeObserver(() => updateSize());
+    observer.observe(chartViewportRef.current);
+    return () => observer.disconnect();
+  }, [fullWindow, expanded]);
 
   const mainQuery = useQuery({
     queryKey: ['market-history', stock?.symbol, range, interval],
@@ -536,11 +652,29 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
     `C ${formatCurrency(latestPoint.close, mainQuery.data?.currency || 'INR')}`,
   ] : [];
   const indicatorLegend = [
-    toggles.sma20 && latestPoint?.sma20 ? { label: 'SMA 20', value: formatCurrency(latestPoint.sma20, mainQuery.data?.currency || 'INR'), tone: '#22D3EE' } : null,
-    toggles.sma50 && latestPoint?.sma50 ? { label: 'SMA 50', value: formatCurrency(latestPoint.sma50, mainQuery.data?.currency || 'INR'), tone: '#C084FC' } : null,
-    toggles.sma200 && latestPoint?.sma200 ? { label: 'SMA 200', value: formatCurrency(latestPoint.sma200, mainQuery.data?.currency || 'INR'), tone: '#34D399' } : null,
-    toggles.vwap && latestPoint?.vwap ? { label: 'VWAP', value: formatCurrency(latestPoint.vwap, mainQuery.data?.currency || 'INR'), tone: '#38BDF8' } : null,
-    toggles.rsi && latestPoint?.rsi14 ? { label: 'RSI', value: latestPoint.rsi14.toFixed(2), tone: '#FB7185' } : null,
+    toggles.sma20 && latestPoint?.sma20 ? { label: 'SMA 20', tone: chartStyle.sma20Color } : null,
+    toggles.sma50 && latestPoint?.sma50 ? { label: 'SMA 50', tone: chartStyle.sma50Color } : null,
+    toggles.sma200 && latestPoint?.sma200 ? { label: 'SMA 200', tone: chartStyle.sma200Color } : null,
+    toggles.vwap && latestPoint?.vwap ? { label: 'VWAP', tone: chartStyle.vwapColor } : null,
+    toggles.rsi && latestPoint?.rsi14 ? { label: 'RSI', tone: '#FB7185' } : null,
+  ].filter(Boolean);
+  const effectiveToggles = useMemo(() => {
+    if (chartType === 'line') return toggles;
+    return {
+      ...toggles,
+      bollinger: showAppearance ? toggles.bollinger : false,
+      fibonacci: false,
+      compare: showTools ? toggles.compare : false,
+    };
+  }, [chartType, showAppearance, showTools, toggles]);
+  const priceMarkers = [
+    markerVisibility.last && latestPoint?.close ? { key: 'last', value: latestPoint.close, color: latestPoint.close >= latestPoint.open ? chartStyle.bullishColor : chartStyle.bearishColor, label: 'Last' } : null,
+    markerVisibility.sma20 && effectiveToggles.sma20 && latestPoint?.sma20 ? { key: 'sma20', value: latestPoint.sma20, color: chartStyle.sma20Color, label: 'SMA20' } : null,
+    markerVisibility.sma50 && effectiveToggles.sma50 && latestPoint?.sma50 ? { key: 'sma50', value: latestPoint.sma50, color: chartStyle.sma50Color, label: 'SMA50' } : null,
+    markerVisibility.sma200 && effectiveToggles.sma200 && latestPoint?.sma200 ? { key: 'sma200', value: latestPoint.sma200, color: chartStyle.sma200Color, label: 'SMA200' } : null,
+    markerVisibility.vwap && effectiveToggles.vwap && latestPoint?.vwap ? { key: 'vwap', value: latestPoint.vwap, color: chartStyle.vwapColor, label: 'VWAP' } : null,
+    markerVisibility.pivot && effectiveToggles.pivots && pivots?.pivot ? { key: 'pivot', value: pivots.pivot, color: '#F59E0B', label: 'Pivot' } : null,
+    markerVisibility.level && horizontalLine ? { key: 'level', value: horizontalLine, color: '#60A5FA', label: 'Level', draggable: true } : null,
   ].filter(Boolean);
 
   const handleToggle = (key) => setToggles((current) => ({ ...current, [key]: !current[key] }));
@@ -593,6 +727,32 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
     event.preventDefault();
     const direction = event.deltaY < 0 ? 1.12 : 1 / 1.12;
     setPriceZoom((current) => clampPriceZoom(current * direction));
+  };
+  const updateChartStyle = (key, value) => setChartStyle((current) => ({ ...current, [key]: value }));
+  const handleMarkerDragStart = (event, marker) => {
+    if (!marker?.draggable || !chartViewportRef.current || !Array.isArray(priceDomain)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const bounds = chartViewportRef.current.getBoundingClientRect();
+    const [min, max] = priceDomain;
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return;
+    const topPadding = 10;
+    const bottomPadding = 26;
+    const usableHeight = Math.max(bounds.height - topPadding - bottomPadding, 1);
+
+    const onMove = (moveEvent) => {
+      const relativeY = Math.min(Math.max(moveEvent.clientY - bounds.top - topPadding, 0), usableHeight);
+      const price = max - ((relativeY / usableHeight) * (max - min));
+      setHorizontalLineInput(String(Number(price).toFixed(2)));
+    };
+
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
   };
 
   const quickToolAction = (mode) => {
@@ -657,6 +817,15 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
               >
                 Tools
                 <ChevronDown className={`h-4 w-4 transition ${showTools ? 'rotate-180' : ''}`} />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowAppearance((value) => !value)}
+                className={`h-9 rounded-2xl border-white/10 px-3 text-xs ${showAppearance ? 'bg-white/10 text-white' : 'bg-white/5 text-slate-200'} hover:bg-white/10`}
+              >
+                Style
+                <ChevronDown className={`h-4 w-4 transition ${showAppearance ? 'rotate-180' : ''}`} />
               </Button>
               <Button type="button" variant="outline" onClick={() => setFullWindow((value) => !value)} className="h-9 rounded-2xl border-white/10 px-3 text-xs bg-white/5 text-white hover:bg-white/10">
                 {fullWindow ? 'Exit Full Window' : 'Full Window'}
@@ -814,7 +983,77 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
           </div>
         ) : null}
 
-        <div ref={chartWrapRef} className="rounded-[24px] border border-white/8 bg-[#060b12] p-3">
+        {showAppearance ? (
+          <div className="grid gap-3 rounded-[24px] border border-white/8 bg-[#0b1119] p-3 md:grid-cols-2 xl:grid-cols-4">
+            {[
+              ['bullishColor', 'Bull'],
+              ['bearishColor', 'Bear'],
+              ['sma20Color', 'SMA20'],
+              ['sma50Color', 'SMA50'],
+              ['sma200Color', 'SMA200'],
+              ['vwapColor', 'VWAP'],
+            ].map(([key, label]) => (
+              <label key={key} className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 text-xs text-slate-300">
+                <span>{label}</span>
+                <input type="color" value={chartStyle[key]} onChange={(event) => updateChartStyle(key, event.target.value)} className="h-8 w-12 rounded border border-white/10 bg-transparent" />
+              </label>
+            ))}
+            <label className="flex flex-col gap-2 rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 text-xs text-slate-300">
+              <span>Candle Width</span>
+              <input type="range" min="0.4" max="0.95" step="0.05" value={chartStyle.candleWidth} onChange={(event) => updateChartStyle('candleWidth', Number(event.target.value))} />
+            </label>
+            <label className="flex flex-col gap-2 rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 text-xs text-slate-300">
+              <span>Candle Sharpness</span>
+              <input type="range" min="1" max="2.4" step="0.1" value={chartStyle.candleSharpness} onChange={(event) => updateChartStyle('candleSharpness', Number(event.target.value))} />
+            </label>
+            <label className="flex flex-col gap-2 rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 text-xs text-slate-300">
+              <span>Line Thickness</span>
+              <input type="range" min="1" max="4" step="0.25" value={chartStyle.lineWidth} onChange={(event) => updateChartStyle('lineWidth', Number(event.target.value))} />
+            </label>
+            <label className="flex flex-col gap-2 rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 text-xs text-slate-300">
+              <span>SMA20 Thickness</span>
+              <input type="range" min="1" max="4" step="0.1" value={chartStyle.sma20Width} onChange={(event) => updateChartStyle('sma20Width', Number(event.target.value))} />
+            </label>
+            <label className="flex flex-col gap-2 rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 text-xs text-slate-300">
+              <span>SMA50 Thickness</span>
+              <input type="range" min="1" max="4" step="0.1" value={chartStyle.sma50Width} onChange={(event) => updateChartStyle('sma50Width', Number(event.target.value))} />
+            </label>
+            <label className="flex flex-col gap-2 rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 text-xs text-slate-300">
+              <span>SMA200 Thickness</span>
+              <input type="range" min="1" max="4" step="0.1" value={chartStyle.sma200Width} onChange={(event) => updateChartStyle('sma200Width', Number(event.target.value))} />
+            </label>
+            <label className="flex flex-col gap-2 rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 text-xs text-slate-300">
+              <span>VWAP Thickness</span>
+              <input type="range" min="1" max="4" step="0.1" value={chartStyle.vwapWidth} onChange={(event) => updateChartStyle('vwapWidth', Number(event.target.value))} />
+            </label>
+            <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 text-xs text-slate-300 md:col-span-2 xl:col-span-4">
+              <p className="mb-2 font-medium text-white">Price Markers</p>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  ['last', 'Last'],
+                  ['sma20', 'SMA20'],
+                  ['sma50', 'SMA50'],
+                  ['sma200', 'SMA200'],
+                  ['vwap', 'VWAP'],
+                  ['pivot', 'Pivot'],
+                  ['level', 'Level'],
+                ].map(([key, label]) => (
+                  <Button
+                    key={key}
+                    type="button"
+                    variant="outline"
+                    onClick={() => setMarkerVisibility((current) => ({ ...current, [key]: !current[key] }))}
+                    className={`h-8 rounded-2xl border-white/10 px-3 text-[11px] ${markerVisibility[key] ? 'bg-white/10 text-white hover:bg-white/15' : 'bg-transparent text-slate-500 hover:bg-white/5'}`}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        <div ref={chartWrapRef} className="rounded-[24px] border border-white/8 bg-[#04070c] p-3">
           <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-white/6 pb-2 text-[11px] text-slate-400">
             <span className="font-semibold text-slate-200">{stock.symbol}</span>
             <span>{interval.toUpperCase()} · {mainQuery.data?.marketSymbol || stock.symbol}</span>
@@ -839,6 +1078,7 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
           ) : (
             <div className="space-y-4">
               <div
+                ref={chartViewportRef}
                 className="relative select-none cursor-ns-resize pl-0 md:pl-14"
                 onMouseDown={startDragZoom}
                 onWheel={handleWheelZoom}
@@ -879,6 +1119,16 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
                     ))}
                   </div>
                 ) : null}
+                {chartType !== 'line' ? (
+                  <CandleOverlay
+                    data={renderedData}
+                    domain={priceDomain}
+                    width={chartViewportWidth}
+                    height={chartHeight}
+                    mode={chartType}
+                    style={chartStyle}
+                  />
+                ) : null}
                 <ResponsiveContainer width="100%" height={chartHeight}>
                   <ComposedChart syncId="stock-chart-sync" data={renderedData} margin={{ left: 0, right: 16, top: 10, bottom: 0 }}>
                     <CartesianGrid stroke="rgba(148,163,184,0.10)" vertical />
@@ -898,28 +1148,29 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
                       content={<ChartTooltip currency={mainQuery.data?.currency || 'INR'} compareSymbol={compareSymbol} />}
                       cursor={{ stroke: 'rgba(148,163,184,0.55)', strokeWidth: 1 }}
                     />
-                    {toggles.pivots && pivots ? (
+                    {effectiveToggles.pivots && pivots ? (
                       <>
                         <ReferenceLine y={pivots.pivot} stroke="rgba(245,158,11,0.55)" strokeDasharray="5 5" />
                         <ReferenceLine y={pivots.r1} stroke="rgba(16,185,129,0.35)" strokeDasharray="4 4" />
                         <ReferenceLine y={pivots.s1} stroke="rgba(244,63,94,0.35)" strokeDasharray="4 4" />
                       </>
                     ) : null}
-                    {toggles.fibonacci && fib ? fib.levels.map((level) => (
+                    {effectiveToggles.fibonacci && fib ? fib.levels.map((level) => (
                       <ReferenceLine key={level.label} y={level.value} stroke="rgba(148,163,184,0.32)" strokeDasharray="3 5" />
                     )) : null}
+                    {latestPoint?.close ? <ReferenceLine y={latestPoint.close} stroke={latestPoint.close >= latestPoint.open ? chartStyle.bullishColor : chartStyle.bearishColor} strokeDasharray="3 4" strokeWidth={1.2} /> : null}
                     {horizontalLine ? <ReferenceLine y={horizontalLine} stroke="rgba(96,165,250,0.75)" strokeDasharray="7 4" /> : null}
-                    {toggles.bollinger ? (
+                    {effectiveToggles.bollinger ? (
                       <>
-                        <Line type="monotone" dataKey="bollingerUpper" stroke="#94A3B8" strokeWidth={1.2} dot={false} connectNulls />
-                        <Line type="monotone" dataKey="bollingerLower" stroke="#94A3B8" strokeWidth={1.2} dot={false} connectNulls />
+                        <Line type="monotone" dataKey="bollingerUpper" stroke={chartStyle.bollingerColor} strokeWidth={1.2} dot={false} connectNulls />
+                        <Line type="monotone" dataKey="bollingerLower" stroke={chartStyle.bollingerColor} strokeWidth={1.2} dot={false} connectNulls />
                       </>
                     ) : null}
-                    {toggles.sma20 ? <Line type="monotone" dataKey="sma20" stroke="#22D3EE" strokeWidth={1.7} dot={false} connectNulls /> : null}
-                    {toggles.sma50 ? <Line type="monotone" dataKey="sma50" stroke="#C084FC" strokeWidth={1.7} dot={false} connectNulls /> : null}
-                    {toggles.sma200 ? <Line type="monotone" dataKey="sma200" stroke="#34D399" strokeWidth={1.7} dot={false} connectNulls /> : null}
-                    {toggles.vwap ? <Line type="monotone" dataKey="vwap" stroke="#38BDF8" strokeWidth={1.7} dot={false} connectNulls /> : null}
-                    {toggles.compare ? compareSymbols.map((symbol, index) => (
+                    {effectiveToggles.sma20 ? <Line type="monotone" dataKey="sma20" stroke={chartStyle.sma20Color} strokeWidth={chartStyle.sma20Width} dot={false} connectNulls /> : null}
+                    {effectiveToggles.sma50 ? <Line type="monotone" dataKey="sma50" stroke={chartStyle.sma50Color} strokeWidth={chartStyle.sma50Width} dot={false} connectNulls /> : null}
+                    {effectiveToggles.sma200 ? <Line type="monotone" dataKey="sma200" stroke={chartStyle.sma200Color} strokeWidth={chartStyle.sma200Width} dot={false} connectNulls /> : null}
+                    {effectiveToggles.vwap ? <Line type="monotone" dataKey="vwap" stroke={chartStyle.vwapColor} strokeWidth={chartStyle.vwapWidth} dot={false} connectNulls /> : null}
+                    {effectiveToggles.compare ? compareSymbols.map((symbol, index) => (
                       <Line
                         key={symbol}
                         type="monotone"
@@ -932,15 +1183,27 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
                     )) : null}
                     {trendlineData.length ? <Line type="monotone" dataKey="manualTrend" stroke="#FDE047" strokeWidth={1.6} dot={false} connectNulls /> : null}
                     {chartType === 'line' ? (
-                      <Line type="monotone" dataKey="close" stroke="#F8FAFC" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
-                    ) : (
-                      <Line dataKey="close" stroke="transparent" dot={<CandleShape mode={chartType} />} activeDot={false} isAnimationActive={false} />
-                    )}
+                      <Line type="monotone" dataKey="close" stroke={chartStyle.lineColor} strokeWidth={chartStyle.lineWidth} dot={false} connectNulls isAnimationActive={false} />
+                    ) : null}
                   </ComposedChart>
                 </ResponsiveContainer>
+                <div className="pointer-events-none absolute bottom-12 right-1 z-10 flex flex-col gap-1">
+                  {priceMarkers.map((marker) => (
+                    <button
+                      key={marker.key}
+                      type="button"
+                      onMouseDown={(event) => handleMarkerDragStart(event, marker)}
+                      className={`pointer-events-auto flex min-w-[92px] items-center justify-between rounded-l-xl border border-white/10 px-2 py-1 text-[11px] font-semibold text-white shadow-[0_6px_18px_rgba(0,0,0,0.28)] ${marker.draggable ? 'cursor-ns-resize' : 'cursor-default'}`}
+                      style={{ backgroundColor: marker.color }}
+                    >
+                      <span>{marker.label}</span>
+                      <span>{formatCurrency(marker.value, mainQuery.data?.currency || 'INR').replace('.00', '')}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              {toggles.volume ? (
+              {effectiveToggles.volume ? (
                 <ResponsiveContainer width="100%" height={110}>
                   <ComposedChart syncId="stock-chart-sync" data={renderedData} margin={{ left: 0, right: 16, top: 0, bottom: 0 }}>
                     <CartesianGrid stroke="rgba(148,163,184,0.08)" vertical={false} />
@@ -959,7 +1222,7 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
                 </ResponsiveContainer>
               ) : null}
 
-              {toggles.rsi ? (
+              {effectiveToggles.rsi ? (
                 <ResponsiveContainer width="100%" height={135}>
                   <ComposedChart syncId="stock-chart-sync" data={renderedData} margin={{ left: 0, right: 16, top: 0, bottom: 0 }}>
                     <CartesianGrid stroke="rgba(148,163,184,0.08)" vertical={false} />
@@ -976,7 +1239,7 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
                 </ResponsiveContainer>
               ) : null}
 
-              {toggles.macd ? (
+              {effectiveToggles.macd ? (
                 <ResponsiveContainer width="100%" height={145}>
                   <ComposedChart syncId="stock-chart-sync" data={renderedData} margin={{ left: 0, right: 16, top: 0, bottom: 0 }}>
                     <CartesianGrid stroke="rgba(148,163,184,0.08)" vertical={false} />
