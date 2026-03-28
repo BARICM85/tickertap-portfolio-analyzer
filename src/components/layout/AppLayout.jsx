@@ -138,7 +138,7 @@ export default function AppLayout() {
           </div>
         </div>
       </header>
-      <div className="relative mx-auto max-w-[1680px] px-4 pb-10 pt-36 lg:px-8 lg:pt-36">
+      <div className="relative mx-auto max-w-[1680px] px-4 pb-10 pt-48 lg:px-8 lg:pt-48">
         <main className="relative z-10 min-w-0 pt-2 lg:pt-0">
           <Outlet />
         </main>
