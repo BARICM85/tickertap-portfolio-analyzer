@@ -9,7 +9,6 @@ import Dashboard from '@/pages/Dashboard';
 import OptionChainPage from '@/pages/OptionChainPage';
 import Portfolio from '@/pages/Portfolio';
 import StockDetail from '@/pages/StockDetail';
-import StudyDesk from '@/pages/StudyDesk';
 import RiskAnalysis from '@/pages/RiskAnalysis';
 import WatchlistPage from '@/pages/WatchlistPage';
 
@@ -29,7 +28,6 @@ function AuthenticatedApp() {
       <Route path="/" element={<Navigate to="/Dashboard" replace />} />
       <Route element={<AppLayout />}>
         <Route path="/Dashboard" element={<Dashboard />} />
-        <Route path="/StudyDesk" element={<StudyDesk />} />
         <Route path="/Portfolio" element={<Portfolio />} />
         <Route path="/OptionChain" element={<OptionChainPage />} />
         <Route path="/StockDetail" element={<StockDetail />} />

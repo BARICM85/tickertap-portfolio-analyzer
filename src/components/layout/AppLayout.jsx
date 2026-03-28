@@ -1,14 +1,13 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { BarChart3, Briefcase, CandlestickChart, Eye, LogOut, Shield, TrendingUp, UserCircle2 } from 'lucide-react';
+import { BarChart3, Briefcase, Eye, LogOut, Shield, TrendingUp, UserCircle2 } from 'lucide-react';
 import GoogleSignInButton from '@/components/auth/GoogleSignInButton';
 import { useAuth } from '@/lib/AuthContext';
 import { formatCurrency } from '@/lib/portfolioAnalytics';
 
 const NAV_ITEMS = [
   { path: '/Dashboard', label: 'Dashboard', icon: BarChart3 },
-  { path: '/StudyDesk', label: 'Study Desk', icon: CandlestickChart },
   { path: '/Portfolio', label: 'Portfolio', icon: Briefcase },
   { path: '/RiskAnalysis', label: 'Risk Lab', icon: Shield },
   { path: '/Watchlist', label: 'Watchlist', icon: Eye },
