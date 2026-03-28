@@ -46,6 +46,7 @@ export default function AppLayout() {
     },
   });
   const indexItems = indexPayload?.items || [];
+  const hasDelayedIndices = indexItems.some((item) => item.delayed);
 
   return (
     <div className="min-h-screen bg-[#07111c] text-white">
@@ -105,6 +106,9 @@ export default function AppLayout() {
 
         <div className="border-t border-white/6">
           <div className="mx-auto max-w-[1680px] px-4 py-2 lg:px-8">
+            {hasDelayedIndices ? (
+              <p className="mb-1 text-[11px] uppercase tracking-[0.18em] text-amber-200/70">Last close shown for unavailable/holiday indices</p>
+            ) : null}
             <div className="flex gap-3 overflow-x-auto whitespace-nowrap pb-1 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-track]:bg-transparent">
               {indexItems.length ? indexItems.map((item) => {
                 const positive = Number(item.changePercent || 0) >= 0;
@@ -117,6 +121,11 @@ export default function AppLayout() {
                     <div className={`rounded-xl px-2 py-1 text-xs font-semibold ${positive ? 'bg-emerald-400/15 text-emerald-300' : 'bg-rose-400/15 text-rose-300'}`}>
                       {positive ? '+' : ''}{Number(item.changePercent || 0).toFixed(2)}%
                     </div>
+                    {item.delayed ? (
+                      <div className="rounded-xl bg-amber-300/12 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-200">
+                        Last close
+                      </div>
+                    ) : null}
                   </div>
                 );
               }) : (

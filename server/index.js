@@ -661,14 +661,14 @@ async function fetchLiveQuote(symbol) {
 }
 
 const INDEX_CATALOG = [
-  { key: 'nifty50', symbol: '^NSEI', label: 'NIFTY 50' },
-  { key: 'banknifty', symbol: '^NSEBANK', label: 'BANK NIFTY' },
-  { key: 'niftyit', symbol: '^CNXIT', label: 'NIFTY IT' },
-  { key: 'niftyauto', symbol: '^CNXAUTO', label: 'NIFTY AUTO' },
-  { key: 'niftypharma', symbol: '^CNXPHARMA', label: 'NIFTY PHARMA' },
-  { key: 'niftyfmcg', symbol: '^CNXFMCG', label: 'NIFTY FMCG' },
-  { key: 'niftymetal', symbol: '^CNXMETAL', label: 'NIFTY METAL' },
-  { key: 'niftyrealty', symbol: '^CNXREALTY', label: 'NIFTY REALTY' },
+  { key: 'nifty50', symbol: '^NSEI', label: 'NIFTY 50', fallbackPrice: 22419.95, fallbackChangePercent: -0.24 },
+  { key: 'banknifty', symbol: '^NSEBANK', label: 'BANK NIFTY', fallbackPrice: 48265.2, fallbackChangePercent: -0.31 },
+  { key: 'niftyit', symbol: '^CNXIT', label: 'NIFTY IT', fallbackPrice: 35842.6, fallbackChangePercent: 0.18 },
+  { key: 'niftyauto', symbol: '^CNXAUTO', label: 'NIFTY AUTO', fallbackPrice: 21984.35, fallbackChangePercent: -0.12 },
+  { key: 'niftypharma', symbol: '^CNXPHARMA', label: 'NIFTY PHARMA', fallbackPrice: 18642.8, fallbackChangePercent: 0.42 },
+  { key: 'niftyfmcg', symbol: '^CNXFMCG', label: 'NIFTY FMCG', fallbackPrice: 54873.55, fallbackChangePercent: 0.07 },
+  { key: 'niftymetal', symbol: '^CNXMETAL', label: 'NIFTY METAL', fallbackPrice: 8342.4, fallbackChangePercent: -0.56 },
+  { key: 'niftyrealty', symbol: '^CNXREALTY', label: 'NIFTY REALTY', fallbackPrice: 918.2, fallbackChangePercent: -0.21 },
 ];
 
 async function fetchIndexQuotes() {
@@ -684,9 +684,19 @@ async function fetchIndexQuotes() {
           changePercent: response.changePercent,
           source: response.source,
           currency: response.currency || 'INR',
+          delayed: false,
         };
       } catch {
-        return null;
+        return {
+          key: item.key,
+          label: item.label,
+          symbol: item.symbol,
+          price: item.fallbackPrice,
+          changePercent: item.fallbackChangePercent,
+          source: 'fallback',
+          currency: 'INR',
+          delayed: true,
+        };
       }
     }),
   );
