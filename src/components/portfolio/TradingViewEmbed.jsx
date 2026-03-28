@@ -15,26 +15,7 @@ function normalizeTradingViewSymbol(stock) {
 }
 
 function loadTradingViewScript() {
-  if (window.TradingView) return Promise.resolve();
-  if (window.__tradingViewScriptPromise) return window.__tradingViewScriptPromise;
-
-  window.__tradingViewScriptPromise = new Promise((resolve, reject) => {
-    const existing = document.querySelector(`script[src="${TRADING_VIEW_SCRIPT}"]`);
-    if (existing) {
-      existing.addEventListener('load', () => resolve(), { once: true });
-      existing.addEventListener('error', reject, { once: true });
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.src = TRADING_VIEW_SCRIPT;
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = reject;
-    document.body.appendChild(script);
-  });
-
-  return window.__tradingViewScriptPromise;
+  return Promise.resolve();
 }
 
 export default function TradingViewEmbed({
@@ -64,17 +45,20 @@ export default function TradingViewEmbed({
 
         hostRef.current.innerHTML = '';
         const container = document.createElement('div');
-        container.id = widgetId;
+        container.className = 'tradingview-widget-container';
         container.style.height = '100%';
-        hostRef.current.appendChild(container);
 
-        if (!window.TradingView?.widget) {
-          throw new Error('TradingView widget unavailable');
-        }
+        const widget = document.createElement('div');
+        widget.className = 'tradingview-widget-container__widget';
+        widget.id = widgetId;
+        widget.style.height = '100%';
 
-        new window.TradingView.widget({
+        const script = document.createElement('script');
+        script.type = 'text/javascript';
+        script.src = TRADING_VIEW_SCRIPT;
+        script.async = true;
+        script.text = JSON.stringify({
           autosize: true,
-          container_id: widgetId,
           symbol: tradingViewSymbol,
           interval,
           range,
@@ -114,7 +98,16 @@ export default function TradingViewEmbed({
           },
         });
 
-        setStatus('ready');
+        script.onload = () => {
+          if (!disposed) setStatus('ready');
+        };
+        script.onerror = () => {
+          if (!disposed) setStatus('error');
+        };
+
+        container.appendChild(widget);
+        container.appendChild(script);
+        hostRef.current.appendChild(container);
       } catch {
         if (!disposed) {
           setStatus('error');
