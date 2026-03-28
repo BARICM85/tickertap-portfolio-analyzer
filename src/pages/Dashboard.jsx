@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
 import PortfolioStats from '@/components/dashboard/PortfolioStats';
 import AllocationChart from '@/components/dashboard/AllocationChart';
+import PortfolioHistoryChart from '@/components/dashboard/PortfolioHistoryChart';
 import PnLChart from '@/components/dashboard/PnLChart';
 import { derivePortfolioAnalytics, deriveWatchlistAnalytics, formatCurrency, formatPercent, getMarketLaggards, getMarketLeaders } from '@/lib/portfolioAnalytics';
 
@@ -70,6 +71,29 @@ export default function Dashboard() {
       <PortfolioStats analytics={analytics} />
 
       <div className="grid gap-6 xl:grid-cols-[1.25fr_0.95fr]">
+        <Panel title="Portfolio Through Time" subtitle="Track invested capital, current value, and profit across your imported lots.">
+          <PortfolioHistoryChart analytics={analytics} />
+        </Panel>
+
+        <Panel title="P&L Summary" subtitle="Absolute and percentage performance based on current holdings.">
+          <div className="grid gap-3 md:grid-cols-2">
+            {[
+              { label: 'Net P&L', value: `${analytics.totals.totalPnL >= 0 ? '+' : '-'}${formatCurrency(Math.abs(analytics.totals.totalPnL))}`, detail: formatPercent(analytics.totals.totalPnLPercent) },
+              { label: 'Best Position', value: analytics.topWinner ? analytics.topWinner.symbol : '--', detail: analytics.topWinner ? formatPercent(analytics.topWinner.pnlPercent) : 'Import holdings to calculate' },
+              { label: 'Worst Position', value: analytics.topLoser ? analytics.topLoser.symbol : '--', detail: analytics.topLoser ? formatPercent(analytics.topLoser.pnlPercent) : 'Import holdings to calculate' },
+              { label: 'Import History Points', value: String(analytics.historySeries.length), detail: 'Timeline entries from imported lots' },
+            ].map((card) => (
+              <div key={card.label} className="rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
+                <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{card.label}</p>
+                <p className="mt-3 text-2xl font-semibold text-white">{card.value}</p>
+                <p className="mt-2 text-sm text-slate-400">{card.detail}</p>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[1.25fr_0.95fr]">
         <Panel
           title="Allocation Map"
           subtitle="Understand how portfolio weight is distributed."
@@ -90,7 +114,7 @@ export default function Dashboard() {
           <AllocationChart analytics={analytics} groupBy={groupBy} />
         </Panel>
 
-        <Panel title="P&L Heatmap" subtitle="Quickly spot contributors and drags.">
+        <Panel title="P&L Heatmap" subtitle="Quickly spot contributors and drags across the imported portfolio.">
           <PnLChart analytics={analytics} />
         </Panel>
       </div>

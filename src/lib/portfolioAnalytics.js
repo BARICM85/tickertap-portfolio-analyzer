@@ -5,6 +5,67 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function parseDateValue(value) {
+  if (!value) return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  if (typeof value === 'number') {
+    const utcDays = Math.floor(value - 25569);
+    const utcValue = utcDays * 86400;
+    return new Date(utcValue * 1000);
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatDateKey(date) {
+  return new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone: 'Asia/Kolkata',
+  }).format(date);
+}
+
+function humanDate(date) {
+  return new Intl.DateTimeFormat('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'Asia/Kolkata',
+  }).format(date);
+}
+
+function normalizePurchaseHistory(stock, profile) {
+  const rawLots = Array.isArray(stock?.purchase_history) && stock.purchase_history.length
+    ? stock.purchase_history
+    : [{
+      quantity: stock?.quantity,
+      buy_price: stock?.buy_price,
+      buy_date: stock?.buy_date,
+      broker: stock?.broker,
+      buy_value: stock?.buy_value,
+    }];
+
+  return rawLots
+    .map((lot) => {
+      const quantity = toNumber(lot?.quantity);
+      const buyPrice = toNumber(lot?.buy_price, profile.current_price);
+      const buyDate = parseDateValue(lot?.buy_date) || parseDateValue(stock?.buy_date);
+      if (!quantity || !buyDate) return null;
+      const invested = toNumber(lot?.buy_value, quantity * buyPrice);
+      return {
+        quantity,
+        buy_price: buyPrice,
+        buy_value: invested,
+        broker: lot?.broker || stock?.broker || undefined,
+        buy_date: formatDateKey(buyDate),
+        buy_date_label: humanDate(buyDate),
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => left.buy_date.localeCompare(right.buy_date));
+}
+
 export function formatCurrency(value, currency = 'INR') {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -51,6 +112,8 @@ export function enrichHolding(stock) {
     ),
   );
 
+  const purchaseHistory = normalizePurchaseHistory(stock, profile);
+
   return {
     ...profile,
     ...stock,
@@ -75,7 +138,45 @@ export function enrichHolding(stock) {
     timeline: buildTimelinePoints({ ...stock, current_price: currentPrice, buy_price: buyPrice }),
     scenarios: buildScenarioPrices({ ...stock, current_price: currentPrice, buy_price: buyPrice, beta: toNumber(stock?.beta, profile.beta) }),
     thesis: stock?.notes || profile.thesis,
+    broker: stock?.broker || purchaseHistory[0]?.broker || undefined,
+    purchase_history: purchaseHistory,
   };
+}
+
+function buildPortfolioHistorySeries(holdings = []) {
+  const events = holdings.flatMap((holding) => (holding.purchase_history || []).map((lot) => ({
+    date: lot.buy_date,
+    label: lot.buy_date_label,
+    symbol: holding.symbol,
+    quantity: lot.quantity,
+    invested: lot.buy_value || (lot.quantity * lot.buy_price),
+    priceNow: holding.current_price,
+  })));
+
+  if (!events.length) return [];
+
+  events.sort((left, right) => left.date.localeCompare(right.date));
+
+  const cumulative = new Map();
+  let investedTotal = 0;
+
+  return events.map((event) => {
+    investedTotal += event.invested;
+    cumulative.set(event.symbol, (cumulative.get(event.symbol) || 0) + event.quantity);
+    const currentValue = [...cumulative.entries()].reduce((sum, [symbol, quantity]) => {
+      const holding = holdings.find((item) => item.symbol === symbol);
+      return sum + (quantity * toNumber(holding?.current_price));
+    }, 0);
+    const pnl = currentValue - investedTotal;
+
+    return {
+      date: event.date,
+      label: event.label,
+      invested: investedTotal,
+      currentValue,
+      pnl,
+    };
+  });
 }
 
 export function derivePortfolioAnalytics(stocks = []) {
@@ -155,6 +256,7 @@ export function derivePortfolioAnalytics(stocks = []) {
     topWinner,
     topLoser,
     rebalanceIdeas,
+    historySeries: buildPortfolioHistorySeries(withAllocation),
     performanceSeries: withAllocation.map((row) => ({
       symbol: row.symbol,
       pnl: row.pnl,

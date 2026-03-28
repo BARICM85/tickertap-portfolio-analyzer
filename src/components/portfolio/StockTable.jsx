@@ -9,7 +9,7 @@ export default function StockTable({ stocks, onDelete, onRefreshPrice, refreshin
     return (
       <div className="rounded-[28px] border border-dashed border-white/10 bg-[#0c1422] p-10 text-center">
         <p className="text-lg font-medium text-white">No holdings in this portfolio yet.</p>
-        <p className="mt-2 text-sm text-slate-400">Add a stock, import a CSV, or sync from Zerodha to build your live portfolio.</p>
+        <p className="mt-2 text-sm text-slate-400">Add a stock, import your Excel workbook, or sync from Zerodha to build your live portfolio.</p>
       </div>
     );
   }

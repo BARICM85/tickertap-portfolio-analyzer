@@ -1,9 +1,100 @@
 import React, { useRef, useState } from 'react';
 import { AlertCircle, CheckCircle2, FileSpreadsheet, Loader2, Upload } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
+import { getStockProfile } from '@/lib/marketData';
+
+function excelSerialToIso(value) {
+  if (!value) return undefined;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+  if (typeof value === 'number') {
+    const utcDays = Math.floor(value - 25569);
+    const utcValue = utcDays * 86400;
+    return new Date(utcValue * 1000).toISOString().slice(0, 10);
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  return parsed.toISOString().slice(0, 10);
+}
+
+function toNumber(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function aggregateWorkbookRows(rows = []) {
+  const grouped = new Map();
+
+  rows.forEach((row) => {
+    const symbol = String(row.Stock || '').trim().toUpperCase();
+    if (!symbol) return;
+
+    const broker = String(row.BROKER || '').trim().toUpperCase() || undefined;
+    const quantity = toNumber(row.Qty, 0);
+    const buyPrice = toNumber(row['Buy Price'], 0);
+    const buyValue = toNumber(row['Buy Value'], quantity * buyPrice);
+    const buyDate = excelSerialToIso(row['Buy Date']);
+    if (!quantity || !buyPrice) return;
+
+    const profile = getStockProfile(symbol);
+    const existing = grouped.get(symbol) || {
+      symbol,
+      name: profile.name,
+      sector: profile.sector,
+      exchange: profile.exchange,
+      current_price: profile.current_price,
+      beta: profile.beta,
+      pe_ratio: profile.pe_ratio,
+      market_cap: profile.market_cap,
+      dividend_yield: profile.dividend_yield,
+      broker,
+      quantity: 0,
+      investedTotal: 0,
+      purchase_history: [],
+    };
+
+    existing.quantity += quantity;
+    existing.investedTotal += buyValue;
+    existing.purchase_history.push({
+      broker,
+      quantity,
+      buy_price: buyPrice,
+      buy_value: buyValue,
+      buy_date: buyDate,
+    });
+    grouped.set(symbol, existing);
+  });
+
+  return [...grouped.values()].map((item) => {
+    const averageBuyPrice = item.quantity > 0 ? item.investedTotal / item.quantity : 0;
+    const sortedHistory = item.purchase_history
+      .filter((lot) => lot.buy_date)
+      .sort((left, right) => left.buy_date.localeCompare(right.buy_date));
+
+    return {
+      symbol: item.symbol,
+      name: item.name,
+      sector: item.sector,
+      exchange: item.exchange,
+      broker: item.broker,
+      quantity: item.quantity,
+      buy_price: Number(averageBuyPrice.toFixed(2)),
+      current_price: item.current_price,
+      buy_date: sortedHistory[0]?.buy_date,
+      buy_value: Number(item.investedTotal.toFixed(2)),
+      currency: 'INR',
+      beta: item.beta,
+      pe_ratio: item.pe_ratio,
+      market_cap: item.market_cap,
+      dividend_yield: item.dividend_yield,
+      notes: `Imported from workbook with ${item.purchase_history.length} lot${item.purchase_history.length === 1 ? '' : 's'}.`,
+      purchase_history: item.purchase_history,
+    };
+  });
+}
 
 export default function ImportDialog({ open, onOpenChange, onImportComplete }) {
   const fileRef = useRef(null);
@@ -16,23 +107,28 @@ export default function ImportDialog({ open, onOpenChange, onImportComplete }) {
 
     setIsUploading(true);
     setResult(null);
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: null });
+      const rawStocks = aggregateWorkbookRows(rows);
 
-    const { file_url } = await base44.integrations.Core.UploadFile({ file });
-    const extracted = await base44.integrations.Core.ExtractDataFromUploadedFile({ file_url });
-    const rawStocks = extracted.output?.stocks || [];
-
-    if (extracted.status === 'success' && rawStocks.length > 0) {
-      await base44.entities.Stock.bulkCreate(rawStocks);
-      setResult({ success: true, count: rawStocks.length });
-      onImportComplete();
-      toast.success(`Imported ${rawStocks.length} holdings.`);
-    } else {
-      setResult({ success: false, error: extracted.details || 'No stock rows were detected.' });
+      if (rawStocks.length > 0) {
+        await base44.entities.Stock.replace(rawStocks);
+        setResult({ success: true, count: rawStocks.length });
+        onImportComplete();
+        toast.success(`Imported ${rawStocks.length} portfolio holdings from Excel.`);
+      } else {
+        setResult({ success: false, error: 'No portfolio rows matched the sample workbook format.' });
+        toast.error('Import failed.');
+      }
+    } catch {
+      setResult({ success: false, error: 'Workbook could not be read. Please use the provided Excel format.' });
       toast.error('Import failed.');
+    } finally {
+      setIsUploading(false);
+      event.target.value = '';
     }
-
-    setIsUploading(false);
-    event.target.value = '';
   };
 
   return (
@@ -45,11 +141,11 @@ export default function ImportDialog({ open, onOpenChange, onImportComplete }) {
         <div className="space-y-4">
           <div className="rounded-[28px] border border-dashed border-white/12 bg-white/[0.03] p-6 text-center">
             <FileSpreadsheet className="mx-auto h-10 w-10 text-amber-300" />
-            <p className="mt-4 text-lg font-medium text-white">Upload CSV or JSON</p>
+            <p className="mt-4 text-lg font-medium text-white">Upload Excel workbook</p>
             <p className="mt-2 text-sm text-slate-400">
-              Expected columns: symbol, name, sector, quantity, buy_price, current_price, buy_date, notes
+              Required columns: BROKER, Stock, Buy Date, Buy Price, Qty, Buy Value
             </p>
-            <input ref={fileRef} type="file" accept=".csv,.json" className="hidden" onChange={handleFileSelect} />
+            <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileSelect} />
             <Button onClick={() => fileRef.current?.click()} disabled={isUploading} className="mt-5 rounded-2xl bg-amber-400 text-slate-950 hover:bg-amber-300">
               {isUploading ? <Loader2 className="animate-spin" /> : <Upload />}
               {isUploading ? 'Importing...' : 'Select File'}
@@ -57,8 +153,8 @@ export default function ImportDialog({ open, onOpenChange, onImportComplete }) {
           </div>
 
           <div className="rounded-[24px] border border-white/10 bg-[#101826] p-4 text-sm text-slate-300">
-            <p className="font-medium text-white">Tip</p>
-            <p className="mt-2">Export spreadsheets as CSV before importing. This standalone build keeps everything in browser storage.</p>
+            <p className="font-medium text-white">Workbook format</p>
+            <p className="mt-2">This importer now follows your sample Excel structure exactly and replaces the old CSV/JSON flow.</p>
           </div>
 
           {result ? (

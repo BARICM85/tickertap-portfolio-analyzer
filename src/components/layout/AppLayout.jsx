@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { BarChart3, Briefcase, Eye, LogOut, Menu, Shield, Sparkles, TrendingUp, UserCircle2, X } from 'lucide-react';
+import { BarChart3, Briefcase, Eye, LogOut, Shield, TrendingUp, UserCircle2 } from 'lucide-react';
 import GoogleSignInButton from '@/components/auth/GoogleSignInButton';
 import { useAuth } from '@/lib/AuthContext';
 import { formatCurrency } from '@/lib/portfolioAnalytics';
@@ -32,7 +32,6 @@ function NavLink({ item, active, onClick }) {
 
 export default function AppLayout() {
   const location = useLocation();
-  const [mobileOpen, setMobileOpen] = useState(false);
   const { user, isAuthenticated, googleConfigured, logout } = useAuth();
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
   const { data: indexPayload } = useQuery({
@@ -54,12 +53,6 @@ export default function AppLayout() {
       <header className="fixed inset-x-0 top-0 z-40 border-b border-white/8 bg-[#07111c]/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1680px] items-center justify-between px-4 py-4 lg:px-8">
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setMobileOpen((open) => !open)}
-              className="rounded-xl border border-white/10 bg-white/5 p-2 text-slate-200 transition hover:bg-white/10 hover:text-white"
-            >
-              {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </button>
             <div className="rounded-2xl bg-amber-300 p-2 text-slate-950">
               <TrendingUp className="h-4 w-4" />
             </div>
@@ -69,11 +62,13 @@ export default function AppLayout() {
             </div>
           </div>
 
+          <nav className="hidden flex-1 items-center justify-center gap-2 px-8 lg:flex">
+            {NAV_ITEMS.map((item) => (
+              <NavLink key={item.path} item={item} active={location.pathname === item.path} />
+            ))}
+          </nav>
+
           <div className="hidden items-center gap-3 lg:flex">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-2">
-              <p className="text-[11px] uppercase tracking-[0.22em] text-amber-200/80">Workspace</p>
-              <p className="mt-1 text-sm text-slate-400">Open the 3-line menu for dashboard, portfolio, risk lab, and watchlist.</p>
-            </div>
             {isAuthenticated ? (
               <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2">
                 {user?.picture ? (
@@ -100,6 +95,14 @@ export default function AppLayout() {
                 <GoogleSignInButton />
               </div>
             ) : null}
+          </div>
+        </div>
+
+        <div className="border-t border-white/6 lg:hidden">
+          <div className="mx-auto flex max-w-[1680px] gap-2 overflow-x-auto px-4 py-3 lg:px-8">
+            {NAV_ITEMS.map((item) => (
+              <NavLink key={item.path} item={item} active={location.pathname === item.path} />
+            ))}
           </div>
         </div>
 
@@ -136,59 +139,7 @@ export default function AppLayout() {
           </div>
         </div>
       </header>
-
-      {mobileOpen ? (
-        <div className="fixed inset-0 z-30 bg-[#07111c]/70 pt-20 backdrop-blur-md">
-          <button
-            type="button"
-            aria-label="Close menu"
-            className="absolute inset-0"
-            onClick={() => setMobileOpen(false)}
-          />
-          <div className="relative ml-3 h-[calc(100vh-6rem)] w-[min(360px,calc(100vw-1.5rem))] sidebar-scroll overflow-y-auto rounded-[32px] border border-white/10 bg-[#0b1624]/96 p-6 shadow-[0_28px_100px_rgba(0,0,0,0.42)]">
-            <div className="flex min-h-full flex-col justify-between gap-6">
-              <div>
-                <div className="flex items-center gap-4">
-                  <div className="rounded-[22px] bg-amber-300 p-3 text-slate-950">
-                    <TrendingUp className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <p className="text-lg font-semibold">TickerTap Clone</p>
-                    <p className="text-sm text-slate-400">Stock portfolio analyzing app</p>
-                  </div>
-                </div>
-
-                <div className="mt-8 rounded-[28px] border border-white/8 bg-white/[0.03] p-5">
-                  <div className="flex items-center gap-2 text-amber-300">
-                    <Sparkles className="h-4 w-4" />
-                    <p className="text-xs uppercase tracking-[0.24em]">Workspace Menu</p>
-                  </div>
-                  <p className="mt-3 text-sm text-slate-300">
-                    Open, switch, and manage the portfolio workspace from this compact drawer so charts and analytics get the full screen width.
-                  </p>
-                </div>
-
-                <nav className="mt-8 space-y-2">
-                  {NAV_ITEMS.map((item) => (
-                    <NavLink key={item.path} item={item} active={location.pathname === item.path} onClick={() => setMobileOpen(false)} />
-                  ))}
-                </nav>
-              </div>
-
-              <div className="space-y-4">
-                <div className="rounded-[28px] border border-white/8 bg-gradient-to-br from-white/[0.07] to-transparent p-5">
-                  <p className="text-sm font-medium text-white">What this app covers</p>
-                  <p className="mt-2 text-sm text-slate-400">
-                    Portfolio dashboard, holding analysis, option chain, watchlist pipeline, import/export, and a risk workflow similar to a modern retail analytics app.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      <div className="relative mx-auto max-w-[1680px] px-4 pb-10 pt-36 lg:px-8 lg:pt-40">
+      <div className="relative mx-auto max-w-[1680px] px-4 pb-10 pt-40 lg:px-8 lg:pt-40">
         <main className="relative z-10 min-w-0 pt-2 lg:pt-0">
           <Outlet />
         </main>
