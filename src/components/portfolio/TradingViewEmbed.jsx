@@ -60,16 +60,6 @@ export default function TradingViewEmbed({
         await loadTradingViewScript();
         if (disposed || !hostRef.current) return;
 
-        hostRef.current.innerHTML = '';
-        const container = document.createElement('div');
-        container.className = 'tradingview-widget-container';
-        container.style.height = '100%';
-
-        const widget = document.createElement('div');
-        widget.className = 'tradingview-widget-container__widget';
-        widget.id = widgetId;
-        widget.style.height = '100%';
-
         const widgetConfig = {
           autosize: true,
           symbol: tradingViewSymbol,
@@ -137,23 +127,26 @@ export default function TradingViewEmbed({
             'linetoolellipse.backgroundColor': 'rgba(96,165,250,0.12)',
           },
         };
+        const configJson = JSON.stringify(widgetConfig);
 
-        const script = document.createElement('script');
-        script.type = 'text/javascript';
-        script.src = TRADING_VIEW_SCRIPT;
-        script.async = true;
-        script.textContent = JSON.stringify(widgetConfig);
+        hostRef.current.innerHTML = `
+          <div class="tradingview-widget-container" style="height:100%">
+            <div id="${widgetId}" class="tradingview-widget-container__widget" style="height:100%"></div>
+            <script type="text/javascript" src="${TRADING_VIEW_SCRIPT}" async>${configJson}</script>
+          </div>
+        `;
 
-        script.onload = () => {
-          if (!disposed) setStatus('ready');
-        };
-        script.onerror = () => {
-          if (!disposed) setStatus('error');
-        };
-
-        container.appendChild(widget);
-        container.appendChild(script);
-        hostRef.current.appendChild(container);
+        const script = hostRef.current.querySelector(`script[src="${TRADING_VIEW_SCRIPT}"]`);
+        if (script) {
+          script.addEventListener('load', () => {
+            if (!disposed) setStatus('ready');
+          }, { once: true });
+          script.addEventListener('error', () => {
+            if (!disposed) setStatus('error');
+          }, { once: true });
+        } else {
+          setStatus('error');
+        }
       } catch {
         if (!disposed) {
           setStatus('error');
