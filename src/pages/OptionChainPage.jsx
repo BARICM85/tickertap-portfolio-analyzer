@@ -100,12 +100,6 @@ export default function OptionChainPage() {
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <Button asChild variant="outline" className="rounded-2xl border-cyan-300/30 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/20">
-                <Link to={stockFromPortfolio ? `/StockChart?id=${stock.id}` : `/StockChart?symbol=${stock.symbol}`} target="_blank" rel="noreferrer">
-                  <ExternalLink className="h-4 w-4" />
-                  Open Chart
-                </Link>
-              </Button>
               <Button asChild variant="outline" className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10">
                 <Link to={stockFromPortfolio ? `/StockDetail?id=${stock.id}` : '/Portfolio'}>
                   <ExternalLink className="h-4 w-4" />

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, BarChart3, Building2, Calendar, ChartNoAxesCombined, CircleDollarSign, Layers3, RefreshCw, Sparkles, TrendingDown, TrendingUp } from 'lucide-react';
+import { ArrowLeft, BarChart3, Building2, Calendar, CircleDollarSign, Layers3, RefreshCw, Sparkles, TrendingDown, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { base44 } from '@/api/base44Client';
@@ -119,12 +119,6 @@ export default function StockDetail() {
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <Button asChild variant="outline" className="rounded-2xl border-cyan-300/30 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/20">
-              <Link to={`/StockChart?id=${stock.id}`} target="_blank" rel="noreferrer">
-                <ChartNoAxesCombined className="h-4 w-4" />
-                Open Full Chart
-              </Link>
-            </Button>
             <Button asChild variant="outline" className="rounded-2xl border-amber-300/30 bg-amber-300/10 text-amber-100 hover:bg-amber-300/20">
               <Link to={`/OptionChain?id=${stock.id}`} target="_blank" rel="noreferrer">
                 <Layers3 className="h-4 w-4" />

@@ -8,7 +8,6 @@ import AppLayout from '@/components/layout/AppLayout';
 import Dashboard from '@/pages/Dashboard';
 import OptionChainPage from '@/pages/OptionChainPage';
 import Portfolio from '@/pages/Portfolio';
-import StockChartPage from '@/pages/StockChartPage';
 import StockDetail from '@/pages/StockDetail';
 import RiskAnalysis from '@/pages/RiskAnalysis';
 import WatchlistPage from '@/pages/WatchlistPage';
@@ -31,7 +30,6 @@ function AuthenticatedApp() {
         <Route path="/Dashboard" element={<Dashboard />} />
         <Route path="/Portfolio" element={<Portfolio />} />
         <Route path="/OptionChain" element={<OptionChainPage />} />
-        <Route path="/StockChart" element={<StockChartPage />} />
         <Route path="/StockDetail" element={<StockDetail />} />
         <Route path="/RiskAnalysis" element={<RiskAnalysis />} />
         <Route path="/Watchlist" element={<WatchlistPage />} />
