@@ -99,7 +99,7 @@ export default function AppLayout() {
         </div>
 
         <div className="border-t border-white/6 lg:hidden">
-          <div className="mx-auto flex max-w-[1680px] gap-2 overflow-x-auto px-4 py-3 lg:px-8">
+          <div className="mx-auto flex max-w-[1680px] gap-2 overflow-x-auto px-4 py-2 lg:px-8">
             {NAV_ITEMS.map((item) => (
               <NavLink key={item.path} item={item} active={location.pathname === item.path} />
             ))}
@@ -107,26 +107,24 @@ export default function AppLayout() {
         </div>
 
         <div className="border-t border-white/6">
-          <div className="mx-auto max-w-[1680px] px-4 py-2 lg:px-8">
+          <div className="mx-auto max-w-[1680px] px-4 py-1.5 lg:px-8">
             {hasDelayedIndices ? (
-              <p className="mb-1 text-[11px] uppercase tracking-[0.18em] text-amber-200/70">Last close shown for unavailable/holiday indices</p>
+              <p className="mb-1 text-[10px] uppercase tracking-[0.16em] text-amber-200/60">Last close shown for unavailable/holiday indices</p>
             ) : null}
-            <div className="flex gap-3 overflow-x-auto whitespace-nowrap pb-1 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-track]:bg-transparent">
+            <div className="flex gap-2 overflow-x-auto whitespace-nowrap pb-1 [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-track]:bg-transparent">
               {indexItems.length ? indexItems.map((item) => {
                 const positive = Number(item.changePercent || 0) >= 0;
                 return (
-                  <div key={item.key} className="flex min-w-fit items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
+                  <div key={item.key} className="flex min-w-fit items-center gap-2 rounded-[18px] border border-white/8 bg-white/[0.03] px-2.5 py-1.5">
                     <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-300">{item.label}</p>
-                      <p className="mt-1 text-sm font-semibold text-white">{formatCurrency(item.price, item.currency || 'INR').replace('.00', '')}</p>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-300">{item.label}</p>
+                      <p className="mt-0.5 text-[15px] font-semibold leading-none text-white">{formatCurrency(item.price, item.currency || 'INR').replace('.00', '')}</p>
                     </div>
-                    <div className={`rounded-xl px-2 py-1 text-xs font-semibold ${positive ? 'bg-emerald-400/15 text-emerald-300' : 'bg-rose-400/15 text-rose-300'}`}>
+                    <div className={`rounded-full px-2 py-1 text-[11px] font-semibold leading-none ${positive ? 'bg-emerald-400/15 text-emerald-300' : 'bg-rose-400/15 text-rose-300'}`}>
                       {positive ? '+' : ''}{Number(item.changePercent || 0).toFixed(2)}%
                     </div>
                     {item.delayed ? (
-                      <div className="rounded-xl bg-amber-300/12 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-200">
-                        Last close
-                      </div>
+                      <div className="rounded-full bg-amber-300/12 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-amber-200">LC</div>
                     ) : null}
                   </div>
                 );
@@ -139,7 +137,7 @@ export default function AppLayout() {
           </div>
         </div>
       </header>
-      <div className="relative mx-auto max-w-[1680px] px-4 pb-10 pt-40 lg:px-8 lg:pt-40">
+      <div className="relative mx-auto max-w-[1680px] px-4 pb-10 pt-36 lg:px-8 lg:pt-36">
         <main className="relative z-10 min-w-0 pt-2 lg:pt-0">
           <Outlet />
         </main>

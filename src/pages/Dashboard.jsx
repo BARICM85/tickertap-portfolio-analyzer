@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowUpRight, Bell, RefreshCw, TrendingDown, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
+import BrokerSyncPanel from '@/components/integrations/BrokerSyncPanel';
 import PortfolioStats from '@/components/dashboard/PortfolioStats';
 import AllocationChart from '@/components/dashboard/AllocationChart';
 import PortfolioHistoryChart from '@/components/dashboard/PortfolioHistoryChart';
@@ -67,6 +68,13 @@ export default function Dashboard() {
           </Button>
         </div>
       </section>
+
+      <BrokerSyncPanel
+        currentStocks={stocks}
+        onSynced={async () => {
+          await queryClient.invalidateQueries({ queryKey: ['stocks'] });
+        }}
+      />
 
       <PortfolioStats analytics={analytics} />
 

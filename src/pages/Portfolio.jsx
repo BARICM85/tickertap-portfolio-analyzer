@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { base44 } from '@/api/base44Client';
-import BrokerSyncPanel from '@/components/integrations/BrokerSyncPanel';
 import AddStockDialog from '@/components/portfolio/AddStockDialog';
 import ImportDialog from '@/components/portfolio/ImportDialog';
 import StockTable from '@/components/portfolio/StockTable';
@@ -197,14 +196,6 @@ export default function Portfolio() {
 
         <StockTable stocks={filteredStocks} onDelete={setDeleteId} onRefreshPrice={refreshOne} refreshingId={refreshingId} />
       </section>
-
-      <BrokerSyncPanel
-        currentStocks={stocks}
-        onSynced={async () => {
-          await queryClient.invalidateQueries({ queryKey: ['stocks'] });
-        }}
-      />
-
       <AddStockDialog open={addOpen} onOpenChange={setAddOpen} onStockAdded={() => queryClient.invalidateQueries({ queryKey: ['stocks'] })} />
       <ImportDialog open={importOpen} onOpenChange={setImportOpen} onImportComplete={() => queryClient.invalidateQueries({ queryKey: ['stocks'] })} />
 
