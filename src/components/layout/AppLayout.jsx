@@ -136,47 +136,6 @@ export default function AppLayout() {
                     Portfolio dashboard, holding analysis, option chain, watchlist pipeline, import/export, and a risk workflow similar to a modern retail analytics app.
                   </p>
                 </div>
-
-                <div className="rounded-[28px] border border-white/8 bg-white/[0.03] p-5">
-                  <div className="flex items-center gap-2 text-amber-300">
-                    <UserCircle2 className="h-4 w-4" />
-                    <p className="text-xs uppercase tracking-[0.22em]">Google Login</p>
-                  </div>
-
-                  {isAuthenticated ? (
-                    <>
-                      <div className="mt-4 flex items-center gap-3">
-                        {user?.picture ? (
-                          <img src={user.picture} alt={user.name} className="h-10 w-10 rounded-full object-cover" />
-                        ) : (
-                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-300/15 text-amber-200">
-                            <UserCircle2 className="h-5 w-5" />
-                          </div>
-                        )}
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-white">{user?.name || user?.email}</p>
-                          <p className="truncate text-xs text-slate-400">{user?.email}</p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={logout}
-                        className="mt-4 inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10"
-                      >
-                        <LogOut className="h-4 w-4" />
-                        Sign out
-                      </button>
-                    </>
-                  ) : googleConfigured ? (
-                    <div className="mt-4">
-                      <GoogleSignInButton />
-                      <p className="mt-3 text-xs text-slate-500">Firebase Auth will use the Google provider enabled in your Firebase project.</p>
-                    </div>
-                  ) : (
-                    <p className="mt-4 text-sm text-slate-400">
-                      Add your <code className="rounded bg-black/20 px-2 py-0.5 text-slate-200">VITE_FIREBASE_*</code> values to enable Google sign-in.
-                    </p>
-                  )}
-                </div>
               </div>
             </div>
           </div>
@@ -186,44 +145,13 @@ export default function AppLayout() {
       <div className="relative mx-auto max-w-[1680px] px-4 pb-10 pt-24 lg:px-8 lg:pt-28">
         <main className="relative z-10 min-w-0 pt-2 lg:pt-0">
           {!hideWorkspaceAccess ? (
-            <div className="mb-6 flex flex-col gap-3 rounded-[28px] border border-white/8 bg-[#0b1624]/75 px-4 py-4 shadow-[0_18px_60px_rgba(0,0,0,0.2)] sm:flex-row sm:items-center sm:justify-between">
+            <div className="mb-6 rounded-[28px] border border-white/8 bg-[#0b1624]/75 px-4 py-4 shadow-[0_18px_60px_rgba(0,0,0,0.2)]">
               <div>
                 <p className="text-xs uppercase tracking-[0.22em] text-amber-200/80">Workspace Access</p>
                 <p className="mt-1 text-sm text-slate-400">
                   Use the 3-line menu to switch sections while keeping the main screen maximized.
                 </p>
               </div>
-
-              {isAuthenticated ? (
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2">
-                    {user?.picture ? (
-                      <img src={user.picture} alt={user.name} className="h-9 w-9 rounded-full object-cover" />
-                    ) : (
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-300/15 text-amber-200">
-                        <UserCircle2 className="h-5 w-5" />
-                      </div>
-                    )}
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-white">{user?.name || user?.email}</p>
-                      <p className="truncate text-xs text-slate-400">{user?.email}</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={logout}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    Sign out
-                  </button>
-                </div>
-              ) : googleConfigured ? (
-                <GoogleSignInButton />
-              ) : (
-                <p className="text-sm text-slate-400">
-                  Add your <code className="rounded bg-black/20 px-2 py-0.5 text-slate-200">VITE_FIREBASE_*</code> values to enable Google sign-in.
-                </p>
-              )}
             </div>
           ) : null}
           <Outlet />
