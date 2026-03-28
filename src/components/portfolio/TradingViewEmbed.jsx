@@ -69,48 +69,10 @@ export default function TradingViewEmbed({
       hide_legend: false,
       allow_symbol_change: true,
       save_image: false,
-      details: true,
+      details: !compact,
       calendar: false,
       watchlist: false,
-      studies: [
-        'RSI@tv-basicstudies',
-        'MACD@tv-basicstudies',
-        'Bollinger Bands@tv-basicstudies',
-        'MASimple@tv-basicstudies',
-        'MASimple@tv-basicstudies',
-        'MASimple@tv-basicstudies',
-      ],
-      studies_overrides: {
-        'volume.volume.color.0': '#ef4444',
-        'volume.volume.color.1': '#22c55e',
-        'moving average.plot.color': '#22c55e',
-        'moving average.plot.linewidth': 2,
-        'bollinger bands.median.color': '#22c55e',
-        'bollinger bands.upper.color': '#60a5fa',
-        'bollinger bands.lower.color': '#60a5fa',
-        'rsi.plot.color': '#a78bfa',
-        'macd.macd.color': '#60a5fa',
-        'macd.signal.color': '#f97316',
-      },
-      overrides: {
-        'paneProperties.background': '#050b14',
-        'paneProperties.vertGridProperties.color': 'rgba(148, 163, 184, 0.08)',
-        'paneProperties.horzGridProperties.color': 'rgba(148, 163, 184, 0.08)',
-        'scalesProperties.textColor': '#d6e2f2',
-        'scalesProperties.fontSize': 13,
-        'mainSeriesProperties.candleStyle.upColor': '#22c55e',
-        'mainSeriesProperties.candleStyle.downColor': '#ef4444',
-        'mainSeriesProperties.candleStyle.borderUpColor': '#22c55e',
-        'mainSeriesProperties.candleStyle.borderDownColor': '#ef4444',
-        'mainSeriesProperties.candleStyle.wickUpColor': '#86efac',
-        'mainSeriesProperties.candleStyle.wickDownColor': '#fca5a5',
-        'mainSeriesProperties.hollowCandleStyle.upColor': '#22c55e',
-        'mainSeriesProperties.hollowCandleStyle.downColor': '#ef4444',
-        'mainSeriesProperties.hollowCandleStyle.borderUpColor': '#22c55e',
-        'mainSeriesProperties.hollowCandleStyle.borderDownColor': '#ef4444',
-        'mainSeriesProperties.hollowCandleStyle.wickUpColor': '#86efac',
-        'mainSeriesProperties.hollowCandleStyle.wickDownColor': '#fca5a5',
-      },
+      studies: ['RSI@tv-basicstudies', 'MACD@tv-basicstudies', 'Bollinger Bands@tv-basicstudies'],
       support_host: 'https://www.tradingview.com',
     };
 
@@ -118,7 +80,7 @@ export default function TradingViewEmbed({
     script.src = TRADING_VIEW_SCRIPT;
     script.type = 'text/javascript';
     script.async = true;
-    script.innerHTML = JSON.stringify(config, null, 2);
+    script.appendChild(document.createTextNode(JSON.stringify(config)));
     script.onload = () => setStatus('ready');
     script.onerror = () => setStatus('error');
     container.appendChild(script);
