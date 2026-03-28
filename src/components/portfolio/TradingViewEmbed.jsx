@@ -93,11 +93,6 @@ export default function TradingViewEmbed({
           calendar: false,
           watchlist: false,
           support_host: 'https://www.tradingview.com',
-          enabled_features: ['side_toolbar_in_fullscreen_mode'],
-          favorites: {
-            intervals: ['1', '5', '15', '60', 'D', 'W'],
-            drawingTools: ['trend_line', 'ray', 'horizontal_line', 'arrow', 'text', 'fib_retracement', 'measure'],
-          },
           studies: [
             'RSI@tv-basicstudies',
             'MACD@tv-basicstudies',
@@ -174,7 +169,7 @@ export default function TradingViewEmbed({
 
   return (
     <section className={`${isFullscreen ? 'fixed inset-3 z-50 overflow-hidden rounded-[32px]' : 'rounded-[32px]'} border border-white/10 bg-[#07111c]/95 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.26)]`}>
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className={`${isFullscreen ? 'sticky top-0 z-10 rounded-[24px] bg-[#07111c]/95 pb-3' : ''} flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between`}>
         <div>
           <p className="text-xs uppercase tracking-[0.22em] text-amber-200/70">{title}</p>
           <h2 className="mt-2 text-xl font-semibold text-white">{stock?.symbol} on TradingView</h2>
@@ -234,7 +229,7 @@ export default function TradingViewEmbed({
         <span className="rounded-full border border-violet-300/20 bg-violet-300/10 px-3 py-1 text-violet-100">RSI</span>
         <span className="rounded-full border border-orange-300/20 bg-orange-300/10 px-3 py-1 text-orange-100">MACD</span>
         <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-cyan-100">Bollinger Bands</span>
-        <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-slate-300">Use the left toolbar for trend lines, text, Fibonacci, and measurement tools</span>
+        <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-slate-300">Use the chart&apos;s left toolbar for trend lines, text, Fibonacci, and measurement tools</span>
         <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-slate-300">Click any plotted drawing to edit its color and style from the TradingView popover</span>
       </div>
 
