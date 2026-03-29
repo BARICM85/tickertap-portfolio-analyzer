@@ -323,10 +323,74 @@ async function getZerodhaInstruments() {
     return cached.rows;
   }
 
-  const text = await kiteTextRequest('/instruments');
-  const rows = parseCsv(text);
-  writeJsonFile(INSTRUMENTS_CACHE_PATH, { fetchedAt: now, rows });
-  return rows;
+  try {
+    const text = await kiteTextRequest('/instruments');
+    const rows = parseCsv(text);
+    writeJsonFile(INSTRUMENTS_CACHE_PATH, { fetchedAt: now, rows });
+    return rows;
+  } catch (error) {
+    if (Array.isArray(cached?.rows) && cached.rows.length > 0) {
+      return cached.rows;
+    }
+    throw error;
+  }
+}
+
+async function searchMarketSymbols(query = '', limit = 12) {
+  const term = query.trim().toUpperCase();
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 12, 50));
+  const results = [];
+  const seen = new Set();
+
+  INDEX_CATALOG.forEach((item) => {
+    const label = item.label || '';
+    if (term && !label.includes(term) && !item.symbol.includes(term)) {
+      return;
+    }
+
+    const key = `INDEX:${item.symbol}`;
+    if (seen.has(key) || results.length >= safeLimit) {
+      return;
+    }
+
+    seen.add(key);
+    results.push({
+      symbol: item.symbol,
+      name: item.label,
+      exchange: 'INDEX',
+      type: 'index',
+    });
+  });
+
+  const instruments = await getZerodhaInstruments();
+  for (const row of instruments) {
+    const exchange = (row.exchange || '').toUpperCase();
+    const instrumentType = (row.instrument_type || '').toUpperCase();
+    const symbol = (row.tradingsymbol || '').toUpperCase();
+    const name = (row.name || '').trim();
+
+    if (exchange !== 'NSE') continue;
+    if (instrumentType && instrumentType !== 'EQ') continue;
+    if (!symbol) continue;
+
+    const haystack = `${symbol} ${name}`.toUpperCase();
+    if (term && !haystack.includes(term)) continue;
+
+    const key = `${exchange}:${symbol}`;
+    if (seen.has(key)) continue;
+
+    seen.add(key);
+    results.push({
+      symbol,
+      name: name || symbol,
+      exchange,
+      type: 'stock',
+    });
+
+    if (results.length >= safeLimit) break;
+  }
+
+  return results;
 }
 
 async function resolveZerodhaInstrument(symbol = '', exchange = 'NSE') {
@@ -937,6 +1001,13 @@ const server = createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/api/market/indices') {
       const payload = await fetchIndexQuotes();
       return sendJson(res, 200, payload);
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/market/search') {
+      const query = url.searchParams.get('q') || '';
+      const limit = url.searchParams.get('limit') || '12';
+      const items = await searchMarketSymbols(query, limit);
+      return sendJson(res, 200, { items });
     }
 
     if (req.method === 'GET' && url.pathname === '/api/market/history') {
