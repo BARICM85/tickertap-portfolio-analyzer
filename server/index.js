@@ -286,6 +286,8 @@ function normalizeQuoteSymbol(symbol = '') {
 function buildYahooSymbolCandidates(symbol = '') {
   const trimmed = symbol.trim().toUpperCase();
   if (!trimmed) return [];
+  if (trimmed.startsWith('^')) return [trimmed];
+  if (trimmed.includes('_')) return [trimmed, `${trimmed}.NS`];
   if (trimmed.includes('.')) return [trimmed];
 
   return [...new Set([
