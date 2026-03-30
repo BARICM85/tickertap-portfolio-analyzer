@@ -4,6 +4,8 @@ import { ArrowDownAZ, ArrowUpDown, ExternalLink, RefreshCw, Trash2, TrendingDown
 import { Button } from '@/components/ui/button';
 import { formatCurrency, formatPercent } from '@/lib/portfolioAnalytics';
 
+const LIGHTWEIGHT_STUDY_APP_URL = 'https://lightweight-study-app.vercel.app';
+
 export default function StockTable({ stocks, onDelete, onRefreshPrice, refreshingId }) {
   const [sortKey, setSortKey] = useState('symbol');
   const [sortDirection, setSortDirection] = useState('asc');
@@ -112,6 +114,11 @@ export default function StockTable({ stocks, onDelete, onRefreshPrice, refreshin
                 </td>
                 <td className="px-5 py-4">
                   <div className="flex items-center justify-end gap-2">
+                    <Button asChild size="icon" variant="ghost" className="text-slate-400 hover:bg-white/5 hover:text-cyan-200">
+                      <a href={`${LIGHTWEIGHT_STUDY_APP_URL}?symbol=${encodeURIComponent(stock.symbol)}`} target="_blank" rel="noreferrer" title={`View ${stock.symbol} chart`}>
+                        <BarChart3 className="h-4 w-4" />
+                      </a>
+                    </Button>
                     <Button asChild size="icon" variant="ghost" className="text-slate-400 hover:bg-white/5 hover:text-white">
                       <Link to={`/StockDetail?id=${stock.id}`}>
                         <ExternalLink className="h-4 w-4" />
