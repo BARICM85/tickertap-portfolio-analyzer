@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowDownAZ, ArrowUpDown, ExternalLink, RefreshCw, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
+import { ArrowDownAZ, ArrowUpDown, BarChart3, ExternalLink, RefreshCw, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatCurrency, formatPercent } from '@/lib/portfolioAnalytics';
 
