@@ -45,6 +45,32 @@ export default function AppLayout() {
   });
   const indexItems = indexPayload?.items || [];
   const hasDelayedIndices = indexItems.some((item) => item.delayed);
+  const accountCard = isAuthenticated ? (
+    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2">
+      {user?.picture ? (
+        <img src={user.picture} alt={user.name} className="h-9 w-9 rounded-full object-cover" />
+      ) : (
+        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-300/15 text-amber-200">
+          <UserCircle2 className="h-5 w-5" />
+        </div>
+      )}
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-white">{user?.name || user?.email}</p>
+        <p className="truncate text-xs text-slate-400">{user?.email}</p>
+      </div>
+      <button
+        onClick={logout}
+        className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10"
+      >
+        <LogOut className="h-4 w-4" />
+        Sign out
+      </button>
+    </div>
+  ) : googleConfigured ? (
+    <div className="w-full max-w-[320px]">
+      <GoogleSignInButton />
+    </div>
+  ) : null;
 
   return (
     <div className="min-h-screen bg-[#07111c] text-white">
@@ -69,40 +95,18 @@ export default function AppLayout() {
           </nav>
 
           <div className="hidden items-center gap-3 lg:flex">
-            {isAuthenticated ? (
-              <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2">
-                {user?.picture ? (
-                  <img src={user.picture} alt={user.name} className="h-9 w-9 rounded-full object-cover" />
-                ) : (
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-300/15 text-amber-200">
-                    <UserCircle2 className="h-5 w-5" />
-                  </div>
-                )}
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-white">{user?.name || user?.email}</p>
-                  <p className="truncate text-xs text-slate-400">{user?.email}</p>
-                </div>
-                <button
-                  onClick={logout}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Sign out
-                </button>
-              </div>
-            ) : googleConfigured ? (
-              <div className="w-[280px]">
-                <GoogleSignInButton />
-              </div>
-            ) : null}
+            {accountCard}
           </div>
         </div>
 
         <div className="border-t border-white/6 lg:hidden">
-          <div className="mx-auto flex max-w-[1680px] gap-2 overflow-x-auto px-4 py-2 lg:px-8">
+          <div className="mx-auto max-w-[1680px] px-4 py-2 lg:px-8">
+            {accountCard ? <div className="mb-2">{accountCard}</div> : null}
+            <div className="flex gap-2 overflow-x-auto">
             {NAV_ITEMS.map((item) => (
               <NavLink key={item.path} item={item} active={location.pathname === item.path} />
             ))}
+            </div>
           </div>
         </div>
 
@@ -137,7 +141,7 @@ export default function AppLayout() {
           </div>
         </div>
       </header>
-      <div className="relative mx-auto max-w-[1680px] px-4 pb-10 pt-48 lg:px-8 lg:pt-48">
+      <div className="relative mx-auto max-w-[1680px] px-3 pb-10 pt-[18.5rem] sm:px-4 sm:pt-[17rem] lg:px-8 lg:pt-48">
         <main className="relative z-10 min-w-0 pt-2 lg:pt-0">
           <Outlet />
         </main>

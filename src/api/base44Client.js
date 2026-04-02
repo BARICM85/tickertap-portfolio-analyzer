@@ -1,17 +1,21 @@
 import { createDemoWatchlist, getStockProfile } from '@/lib/marketData';
 import { buildRiskNarrative, derivePortfolioAnalytics } from '@/lib/portfolioAnalytics';
 import { namespacedKey } from '@/lib/appConfig';
+import { isFirebaseConfigured, loadFirebaseDataLayer } from '@/lib/firebaseAuth';
 
 const STORAGE_KEYS = {
   stocks: namespacedKey('portfolio_analyzer_stocks'),
   watchlist: namespacedKey('portfolio_analyzer_watchlist'),
-  watchlistCollections: namespacedKey('portfolio_analyzer_watchlist_collections'),
   session: namespacedKey('portfolio_analyzer_session'),
   bootstrapped: namespacedKey('portfolio_analyzer_bootstrapped'),
 };
 
 const uploadedFiles = new Map();
 const isBrowser = typeof window !== 'undefined';
+const CLOUD_COLLECTIONS = {
+  [STORAGE_KEYS.stocks]: 'stocks',
+  [STORAGE_KEYS.watchlist]: 'watchlist',
+};
 
 function getNowIso() {
   return new Date().toISOString();
@@ -40,6 +44,92 @@ function writeCollection(key, rows) {
   window.localStorage.setItem(key, JSON.stringify(rows));
 }
 
+async function getCloudCollection(storageKey) {
+  if (!isBrowser || !isFirebaseConfigured()) return null;
+
+  try {
+    const { auth, db } = await loadFirebaseDataLayer();
+    const user = auth.currentUser;
+    const collectionName = CLOUD_COLLECTIONS[storageKey];
+    if (!user || !collectionName) return null;
+
+    return db.collection('portfolioAnalyzerUsers').doc(user.uid).collection(collectionName);
+  } catch {
+    return null;
+  }
+}
+
+async function syncLocalRowsToCloud(storageKey, rows) {
+  const collectionRef = await getCloudCollection(storageKey);
+  if (!collectionRef || !rows.length) return null;
+
+  try {
+    await Promise.all(rows.map(async (row) => {
+      const payload = {
+        ...row,
+        id: row.id || createId(),
+        created_date: row.created_date || getNowIso(),
+      };
+      await collectionRef.doc(payload.id).set(payload);
+    }));
+  } catch {
+    return null;
+  }
+  return rows;
+}
+
+async function readEntityRows(storageKey) {
+  const collectionRef = await getCloudCollection(storageKey);
+  if (!collectionRef) return readCollection(storageKey);
+
+  try {
+    const snapshot = await collectionRef.get();
+    if (snapshot.empty) {
+      const localRows = readCollection(storageKey);
+      if (localRows.length) {
+        await syncLocalRowsToCloud(storageKey, localRows);
+      }
+      return localRows;
+    }
+
+    const rows = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    writeCollection(storageKey, rows);
+    return rows;
+  } catch {
+    return readCollection(storageKey);
+  }
+}
+
+async function writeEntityRows(storageKey, rows) {
+  const normalizedRows = rows.map((row) => ({
+    ...row,
+    id: row.id || createId(),
+    created_date: row.created_date || getNowIso(),
+  }));
+  writeCollection(storageKey, normalizedRows);
+
+  const collectionRef = await getCloudCollection(storageKey);
+  if (!collectionRef) return normalizedRows;
+
+  try {
+    const snapshot = await collectionRef.get();
+    const existingIds = new Set(snapshot.docs.map((doc) => doc.id));
+    const nextIds = new Set(normalizedRows.map((row) => row.id));
+
+    await Promise.all(normalizedRows.map(async (row) => {
+      await collectionRef.doc(row.id).set(row);
+    }));
+
+    await Promise.all([...existingIds]
+      .filter((id) => !nextIds.has(id))
+      .map((id) => collectionRef.doc(id).delete()));
+  } catch {
+    return normalizedRows;
+  }
+
+  return normalizedRows;
+}
+
 function parseNumber(value, fallback = undefined) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -51,60 +141,11 @@ function parseSymbolsFromPrompt(prompt = '') {
   return tokens.filter((token, index) => !blocked.has(token) && tokens.indexOf(token) === index);
 }
 
-function createDefaultWatchlistCollection() {
-  return {
-    id: createId(),
-    name: 'Watchlist 1',
-    archived: false,
-    created_date: getNowIso(),
-  };
-}
-
-function ensureWatchlistCollections() {
-  if (!isBrowser) return;
-
-  let collections = readCollection(STORAGE_KEYS.watchlistCollections);
-  if (collections.length === 0) {
-    const defaultCollection = createDefaultWatchlistCollection();
-    collections = [defaultCollection];
-    writeCollection(STORAGE_KEYS.watchlistCollections, collections);
-  }
-
-  const normalizedCollections = collections.map((item) => ({
-    archived: false,
-    ...item,
-  }));
-  if (JSON.stringify(normalizedCollections) !== JSON.stringify(collections)) {
-    collections = normalizedCollections;
-    writeCollection(STORAGE_KEYS.watchlistCollections, collections);
-  }
-
-  const validIds = new Set(collections.map((item) => item.id));
-  const defaultListId = collections[0]?.id;
-  const watchlist = readCollection(STORAGE_KEYS.watchlist);
-  const needsRepair = watchlist.some((item) => !item.list_id || !validIds.has(item.list_id));
-
-  if (needsRepair) {
-    writeCollection(
-      STORAGE_KEYS.watchlist,
-      watchlist.map((item) => ({
-        ...item,
-        list_id: validIds.has(item.list_id) ? item.list_id : defaultListId,
-      })),
-    );
-  }
-}
-
 function ensureSeeded() {
   if (!isBrowser) return;
-  ensureWatchlistCollections();
   if (window.localStorage.getItem(STORAGE_KEYS.bootstrapped)) return;
-
-  const collections = readCollection(STORAGE_KEYS.watchlistCollections);
-  const defaultListId = collections[0]?.id;
-
   if (readCollection(STORAGE_KEYS.watchlist).length === 0) {
-    const seededWatchlist = createDemoWatchlist(defaultListId).map((row) => ({
+    const seededWatchlist = createDemoWatchlist().map((row) => ({
       ...row,
       id: createId(),
       created_date: getNowIso(),
@@ -274,7 +315,7 @@ function createEntityApi(storageKey) {
   return {
     async list(order) {
       ensureSeeded();
-      const items = readCollection(storageKey);
+      const items = await readEntityRows(storageKey);
       if (order === '-created_date') {
         return [...items].sort((left, right) => new Date(right.created_date) - new Date(left.created_date));
       }
@@ -282,38 +323,34 @@ function createEntityApi(storageKey) {
     },
     async create(payload) {
       ensureSeeded();
-      const items = readCollection(storageKey);
+      const items = await readEntityRows(storageKey);
       const created = { ...payload, id: createId(), created_date: getNowIso() };
-      writeCollection(storageKey, [...items, created]);
+      await writeEntityRows(storageKey, [...items, created]);
       return created;
     },
     async bulkCreate(payloads = []) {
       ensureSeeded();
-      const items = readCollection(storageKey);
+      const items = await readEntityRows(storageKey);
       const created = payloads.map((payload) => ({ ...payload, id: createId(), created_date: getNowIso() }));
-      writeCollection(storageKey, [...items, ...created]);
+      await writeEntityRows(storageKey, [...items, ...created]);
       return created;
     },
     async update(id, updates) {
       ensureSeeded();
-      const items = readCollection(storageKey);
+      const items = await readEntityRows(storageKey);
       const next = items.map((item) => (item.id === id ? { ...item, ...updates } : item));
-      writeCollection(storageKey, next);
+      await writeEntityRows(storageKey, next);
       return next.find((item) => item.id === id) || null;
     },
     async delete(id) {
       ensureSeeded();
-      const items = readCollection(storageKey);
-      writeCollection(storageKey, items.filter((item) => item.id !== id));
+      const items = await readEntityRows(storageKey);
+      await writeEntityRows(storageKey, items.filter((item) => item.id !== id));
       return { success: true };
     },
     async replace(rows = []) {
       ensureSeeded();
-      writeCollection(storageKey, rows.map((row) => ({
-        ...row,
-        id: row.id || createId(),
-        created_date: row.created_date || getNowIso(),
-      })));
+      await writeEntityRows(storageKey, rows);
       return rows;
     },
   };
@@ -343,7 +380,6 @@ export const base44 = {
   entities: {
     Stock: createEntityApi(STORAGE_KEYS.stocks),
     Watchlist: createEntityApi(STORAGE_KEYS.watchlist),
-    WatchlistCollection: createEntityApi(STORAGE_KEYS.watchlistCollections),
   },
   integrations: {
     Core: {
