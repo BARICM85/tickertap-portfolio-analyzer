@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Edit3, Loader2, Plus, Search, Target, Trash2 } from 'lucide-react';
+import { Archive, Edit3, Loader2, Plus, Search, Target, Trash2, Undo2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,8 @@ export default function WatchlistPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [collectionOpen, setCollectionOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [collectionName, setCollectionName] = useState('');
   const [renameName, setRenameName] = useState('');
   const [selectedListId, setSelectedListId] = useState('');
@@ -44,6 +47,8 @@ export default function WatchlistPage() {
   }, [collections, selectedListId]);
 
   const currentCollection = collections.find((item) => item.id === selectedListId) || null;
+  const activeCollections = collections.filter((item) => !item.archived);
+  const archivedCollections = collections.filter((item) => item.archived);
   const scopedWatchlist = useMemo(
     () => watchlist.filter((item) => item.list_id === selectedListId),
     [selectedListId, watchlist],
@@ -122,6 +127,39 @@ export default function WatchlistPage() {
     toast.success('Watchlist renamed.');
   };
 
+  const archiveCollection = async () => {
+    if (!currentCollection) return;
+    await base44.entities.WatchlistCollection.update(currentCollection.id, { archived: true });
+    await queryClient.invalidateQueries({ queryKey: ['watchlist-collections'] });
+    const nextActive = activeCollections.find((item) => item.id !== currentCollection.id);
+    setSelectedListId(nextActive?.id || archivedCollections[0]?.id || '');
+    setArchiveOpen(false);
+    toast.success('Watchlist archived.');
+  };
+
+  const restoreCollection = async (collection) => {
+    await base44.entities.WatchlistCollection.update(collection.id, { archived: false });
+    await queryClient.invalidateQueries({ queryKey: ['watchlist-collections'] });
+    setSelectedListId(collection.id);
+    toast.success('Watchlist restored.');
+  };
+
+  const deleteCollection = async () => {
+    if (!currentCollection) return;
+
+    const rowsToDelete = watchlist.filter((item) => item.list_id === currentCollection.id);
+    await Promise.all(rowsToDelete.map((item) => base44.entities.Watchlist.delete(item.id)));
+    await base44.entities.WatchlistCollection.delete(currentCollection.id);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['watchlist'] }),
+      queryClient.invalidateQueries({ queryKey: ['watchlist-collections'] }),
+    ]);
+    const nextCollection = activeCollections.find((item) => item.id !== currentCollection.id) || archivedCollections[0];
+    setSelectedListId(nextCollection?.id || '');
+    setDeleteOpen(false);
+    toast.success('Watchlist deleted.');
+  };
+
   const remove = async (id) => {
     await base44.entities.Watchlist.delete(id);
     await queryClient.invalidateQueries({ queryKey: ['watchlist'] });
@@ -167,6 +205,14 @@ export default function WatchlistPage() {
               <Edit3 />
               Rename
             </Button>
+            <Button variant="outline" onClick={() => setArchiveOpen(true)} disabled={!currentCollection || currentCollection.archived || activeCollections.length <= 1} className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10">
+              <Archive />
+              Archive
+            </Button>
+            <Button variant="outline" onClick={() => setDeleteOpen(true)} disabled={!currentCollection || activeCollections.length <= 1} className="rounded-2xl border-rose-400/30 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20">
+              <Trash2 />
+              Delete
+            </Button>
             <Button onClick={() => setAddOpen(true)} className="rounded-2xl bg-amber-300 text-slate-950 hover:bg-amber-200">
               <Plus />
               Add Watchlist Item
@@ -177,7 +223,7 @@ export default function WatchlistPage() {
 
       <section className="rounded-[28px] border border-white/10 bg-[#0b1624]/90 p-4">
         <div className="flex flex-wrap gap-3">
-          {collections.map((collection) => {
+          {activeCollections.map((collection) => {
             const count = watchlist.filter((item) => item.list_id === collection.id).length;
             const active = collection.id === selectedListId;
             return (
@@ -193,6 +239,28 @@ export default function WatchlistPage() {
             );
           })}
         </div>
+        {archivedCollections.length > 0 ? (
+          <div className="mt-4 border-t border-white/8 pt-4">
+            <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Archived Watchlists</p>
+            <div className="mt-3 flex flex-wrap gap-3">
+              {archivedCollections.map((collection) => {
+                const count = watchlist.filter((item) => item.list_id === collection.id).length;
+                return (
+                  <div key={collection.id} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">{collection.name}</p>
+                      <p className="mt-1 text-xs text-slate-400">{count} tracked name{count === 1 ? '' : 's'}</p>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => restoreCollection(collection)} className="rounded-xl border-white/10 bg-white/5 text-white hover:bg-white/10">
+                      <Undo2 />
+                      Restore
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="grid gap-4 md:grid-cols-3">
@@ -291,6 +359,36 @@ export default function WatchlistPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={archiveOpen} onOpenChange={setArchiveOpen}>
+        <AlertDialogContent className="border-white/10 bg-[#0c1422] text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Archive this watchlist?</AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-400">
+              {currentCollection?.name} will be hidden from the active tabs, but all its tracked stocks will stay saved and can be restored later.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-white/10 bg-white/5 text-white hover:bg-white/10">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={archiveCollection} className="bg-amber-300 text-slate-950 hover:bg-amber-200">Archive Watchlist</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent className="border-white/10 bg-[#0c1422] text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this watchlist?</AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-400">
+              This will permanently remove {currentCollection?.name} and all stocks inside it from local storage.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-white/10 bg-white/5 text-white hover:bg-white/10">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={deleteCollection} className="bg-rose-400 text-slate-950 hover:bg-rose-300">Delete Watchlist</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-w-lg border-white/10 bg-[#0c1422] text-white">

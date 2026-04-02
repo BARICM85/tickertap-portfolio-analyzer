@@ -55,6 +55,7 @@ function createDefaultWatchlistCollection() {
   return {
     id: createId(),
     name: 'Watchlist 1',
+    archived: false,
     created_date: getNowIso(),
   };
 }
@@ -66,6 +67,15 @@ function ensureWatchlistCollections() {
   if (collections.length === 0) {
     const defaultCollection = createDefaultWatchlistCollection();
     collections = [defaultCollection];
+    writeCollection(STORAGE_KEYS.watchlistCollections, collections);
+  }
+
+  const normalizedCollections = collections.map((item) => ({
+    archived: false,
+    ...item,
+  }));
+  if (JSON.stringify(normalizedCollections) !== JSON.stringify(collections)) {
+    collections = normalizedCollections;
     writeCollection(STORAGE_KEYS.watchlistCollections, collections);
   }
 
