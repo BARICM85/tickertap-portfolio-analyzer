@@ -244,8 +244,7 @@ export function resolveStockInput(input = '') {
   const exactNameMatch = getCatalogSnapshot().find((item) => normalizeSearchText(item.name) === normalizedNeedle);
   if (exactNameMatch) return exactNameMatch;
 
-  const partialMatch = searchStockCatalog(raw, 1)[0];
-  return partialMatch || null;
+  return searchStockCatalog(raw, 1)[0] || null;
 }
 
 export function buildTimelinePoints(stock, months = 6) {
@@ -316,7 +315,7 @@ export function createDemoPortfolio() {
   });
 }
 
-export function createDemoWatchlist(listId) {
+export function createDemoWatchlist() {
   return [
     { symbol: 'INFY', target_price: 1600, notes: 'Buy on margin recovery follow-through.' },
     { symbol: 'HINDUNILVR', target_price: 2325, notes: 'Defensive add if valuation cools.' },
@@ -330,7 +329,6 @@ export function createDemoWatchlist(listId) {
       sector: profile.sector,
       current_price: profile.current_price,
       exchange: profile.exchange,
-      list_id: listId,
     };
   });
 }
