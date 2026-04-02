@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Plus, Search, Target, Trash2 } from 'lucide-react';
+import { Edit3, Loader2, Plus, Search, Target, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,6 +15,11 @@ const INITIAL_FORM = { symbol: '', name: '', target_price: '', notes: '' };
 export default function WatchlistPage() {
   const [form, setForm] = useState(INITIAL_FORM);
   const [addOpen, setAddOpen] = useState(false);
+  const [collectionOpen, setCollectionOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [collectionName, setCollectionName] = useState('');
+  const [renameName, setRenameName] = useState('');
+  const [selectedListId, setSelectedListId] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const queryClient = useQueryClient();
@@ -27,9 +32,25 @@ export default function WatchlistPage() {
     queryKey: ['stocks'],
     queryFn: () => base44.entities.Stock.list('-created_date'),
   });
+  const { data: collections = [] } = useQuery({
+    queryKey: ['watchlist-collections'],
+    queryFn: () => base44.entities.WatchlistCollection.list('-created_date'),
+  });
+
+  useEffect(() => {
+    if (!collections.length) return;
+    const exists = collections.some((item) => item.id === selectedListId);
+    if (!selectedListId || !exists) setSelectedListId(collections[0].id);
+  }, [collections, selectedListId]);
+
+  const currentCollection = collections.find((item) => item.id === selectedListId) || null;
+  const scopedWatchlist = useMemo(
+    () => watchlist.filter((item) => item.list_id === selectedListId),
+    [selectedListId, watchlist],
+  );
 
   const holdings = derivePortfolioAnalytics(stocks);
-  const items = deriveWatchlistAnalytics(watchlist, holdings.holdings);
+  const items = deriveWatchlistAnalytics(scopedWatchlist, holdings.holdings);
 
   const lookup = async () => {
     if (!form.symbol.trim()) return;
@@ -54,7 +75,7 @@ export default function WatchlistPage() {
   };
 
   const save = async () => {
-    if (!form.symbol || !form.name) {
+    if (!form.symbol || !form.name || !selectedListId) {
       toast.error('Symbol and company name are required.');
       return;
     }
@@ -64,12 +85,41 @@ export default function WatchlistPage() {
       name: form.name,
       target_price: Number(form.target_price || 0),
       notes: form.notes || undefined,
+      list_id: selectedListId,
     });
     setIsSaving(false);
     setForm(INITIAL_FORM);
     setAddOpen(false);
     await queryClient.invalidateQueries({ queryKey: ['watchlist'] });
     toast.success('Added to watchlist.');
+  };
+
+  const createCollection = async () => {
+    const name = collectionName.trim();
+    if (!name) {
+      toast.error('Watchlist name is required.');
+      return;
+    }
+
+    const created = await base44.entities.WatchlistCollection.create({ name });
+    await queryClient.invalidateQueries({ queryKey: ['watchlist-collections'] });
+    setSelectedListId(created.id);
+    setCollectionName('');
+    setCollectionOpen(false);
+    toast.success('New watchlist created.');
+  };
+
+  const renameCollection = async () => {
+    if (!currentCollection) return;
+    const name = renameName.trim();
+    if (!name) {
+      toast.error('Watchlist name is required.');
+      return;
+    }
+    await base44.entities.WatchlistCollection.update(currentCollection.id, { name });
+    await queryClient.invalidateQueries({ queryKey: ['watchlist-collections'] });
+    setRenameOpen(false);
+    toast.success('Watchlist renamed.');
   };
 
   const remove = async (id) => {
@@ -108,17 +158,47 @@ export default function WatchlistPage() {
               Monitor target prices, compare them with the local market snapshot, and promote names into the portfolio when they hit your zone.
             </p>
           </div>
-          <Button onClick={() => setAddOpen(true)} className="rounded-2xl bg-amber-300 text-slate-950 hover:bg-amber-200">
-            <Plus />
-            Add Watchlist Item
-          </Button>
+          <div className="flex flex-wrap gap-3">
+            <Button variant="outline" onClick={() => setCollectionOpen(true)} className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10">
+              <Plus />
+              Add Watchlist
+            </Button>
+            <Button variant="outline" onClick={() => { setRenameName(currentCollection?.name || ''); setRenameOpen(true); }} disabled={!currentCollection} className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10">
+              <Edit3 />
+              Rename
+            </Button>
+            <Button onClick={() => setAddOpen(true)} className="rounded-2xl bg-amber-300 text-slate-950 hover:bg-amber-200">
+              <Plus />
+              Add Watchlist Item
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-[28px] border border-white/10 bg-[#0b1624]/90 p-4">
+        <div className="flex flex-wrap gap-3">
+          {collections.map((collection) => {
+            const count = watchlist.filter((item) => item.list_id === collection.id).length;
+            const active = collection.id === selectedListId;
+            return (
+              <button
+                key={collection.id}
+                type="button"
+                onClick={() => setSelectedListId(collection.id)}
+                className={`rounded-2xl border px-4 py-3 text-left transition ${active ? 'border-amber-300/40 bg-amber-300/15 text-white' : 'border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/[0.06]'}`}
+              >
+                <p className="text-sm font-semibold">{collection.name}</p>
+                <p className="mt-1 text-xs text-slate-400">{count} tracked name{count === 1 ? '' : 's'}</p>
+              </button>
+            );
+          })}
         </div>
       </section>
 
       <section className="grid gap-4 md:grid-cols-3">
         {[
           { label: 'Tracked Names', value: `${items.length}`, note: `${items.filter((item) => item.status === 'Buy zone').length} in buy zone` },
-          { label: 'Near Target', value: `${items.filter((item) => item.status === 'Near target').length}`, note: 'Within a small distance of target' },
+          { label: 'Near Target', value: `${items.filter((item) => item.status === 'Near target').length}`, note: currentCollection ? `${currentCollection.name} focus list` : 'Within a small distance of target' },
           { label: 'Already Owned', value: `${items.filter((item) => item.alreadyOwned).length}`, note: 'Watchlist names that are also in the portfolio' },
         ].map((card) => (
           <div key={card.label} className="rounded-[28px] border border-white/10 bg-[#0b1624]/90 p-5">
@@ -176,10 +256,46 @@ export default function WatchlistPage() {
         ))}
       </section>
 
+      <Dialog open={collectionOpen} onOpenChange={setCollectionOpen}>
+        <DialogContent className="max-w-md border-white/10 bg-[#0c1422] text-white">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Create Watchlist</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-xs uppercase tracking-[0.18em] text-slate-400">Watchlist Name</Label>
+              <Input value={collectionName} onChange={(event) => setCollectionName(event.target.value)} className="mt-1 border-white/10 bg-white/5 text-white" placeholder="Swing Ideas" />
+            </div>
+            <Button onClick={createCollection} className="w-full rounded-2xl bg-amber-300 text-slate-950 hover:bg-amber-200">
+              <Plus />
+              Create Watchlist
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
+        <DialogContent className="max-w-md border-white/10 bg-[#0c1422] text-white">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Rename Watchlist</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-xs uppercase tracking-[0.18em] text-slate-400">Watchlist Name</Label>
+              <Input value={renameName} onChange={(event) => setRenameName(event.target.value)} className="mt-1 border-white/10 bg-white/5 text-white" />
+            </div>
+            <Button onClick={renameCollection} className="w-full rounded-2xl bg-amber-300 text-slate-950 hover:bg-amber-200">
+              <Edit3 />
+              Save Name
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-w-lg border-white/10 bg-[#0c1422] text-white">
           <DialogHeader>
-            <DialogTitle className="text-xl">Add To Watchlist</DialogTitle>
+            <DialogTitle className="text-xl">Add To {currentCollection?.name || 'Watchlist'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>

@@ -203,6 +203,13 @@ export function getCatalogSnapshot() {
   }));
 }
 
+function normalizeSearchText(value = '') {
+  return String(value)
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+}
+
 export function searchStockCatalog(query = '', limit = 8) {
   const needle = query.trim().toUpperCase();
   if (!needle) return getCatalogSnapshot().slice(0, limit);
@@ -219,6 +226,26 @@ export function searchStockCatalog(query = '', limit = 8) {
     .filter((item) => item.score > 0)
     .sort((left, right) => right.score - left.score || left.symbol.localeCompare(right.symbol))
     .slice(0, limit);
+}
+
+export function resolveStockInput(input = '') {
+  const raw = String(input || '').trim();
+  if (!raw) return null;
+
+  const directProfile = STOCK_CATALOG[raw.toUpperCase()];
+  if (directProfile) {
+    return {
+      symbol: raw.toUpperCase(),
+      ...directProfile,
+    };
+  }
+
+  const normalizedNeedle = normalizeSearchText(raw);
+  const exactNameMatch = getCatalogSnapshot().find((item) => normalizeSearchText(item.name) === normalizedNeedle);
+  if (exactNameMatch) return exactNameMatch;
+
+  const partialMatch = searchStockCatalog(raw, 1)[0];
+  return partialMatch || null;
 }
 
 export function buildTimelinePoints(stock, months = 6) {
@@ -289,7 +316,7 @@ export function createDemoPortfolio() {
   });
 }
 
-export function createDemoWatchlist() {
+export function createDemoWatchlist(listId) {
   return [
     { symbol: 'INFY', target_price: 1600, notes: 'Buy on margin recovery follow-through.' },
     { symbol: 'HINDUNILVR', target_price: 2325, notes: 'Defensive add if valuation cools.' },
@@ -303,6 +330,7 @@ export function createDemoWatchlist() {
       sector: profile.sector,
       current_price: profile.current_price,
       exchange: profile.exchange,
+      list_id: listId,
     };
   });
 }

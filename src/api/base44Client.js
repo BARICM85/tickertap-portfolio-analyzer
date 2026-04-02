@@ -5,6 +5,7 @@ import { namespacedKey } from '@/lib/appConfig';
 const STORAGE_KEYS = {
   stocks: namespacedKey('portfolio_analyzer_stocks'),
   watchlist: namespacedKey('portfolio_analyzer_watchlist'),
+  watchlistCollections: namespacedKey('portfolio_analyzer_watchlist_collections'),
   session: namespacedKey('portfolio_analyzer_session'),
   bootstrapped: namespacedKey('portfolio_analyzer_bootstrapped'),
 };
@@ -50,11 +51,50 @@ function parseSymbolsFromPrompt(prompt = '') {
   return tokens.filter((token, index) => !blocked.has(token) && tokens.indexOf(token) === index);
 }
 
+function createDefaultWatchlistCollection() {
+  return {
+    id: createId(),
+    name: 'Watchlist 1',
+    created_date: getNowIso(),
+  };
+}
+
+function ensureWatchlistCollections() {
+  if (!isBrowser) return;
+
+  let collections = readCollection(STORAGE_KEYS.watchlistCollections);
+  if (collections.length === 0) {
+    const defaultCollection = createDefaultWatchlistCollection();
+    collections = [defaultCollection];
+    writeCollection(STORAGE_KEYS.watchlistCollections, collections);
+  }
+
+  const validIds = new Set(collections.map((item) => item.id));
+  const defaultListId = collections[0]?.id;
+  const watchlist = readCollection(STORAGE_KEYS.watchlist);
+  const needsRepair = watchlist.some((item) => !item.list_id || !validIds.has(item.list_id));
+
+  if (needsRepair) {
+    writeCollection(
+      STORAGE_KEYS.watchlist,
+      watchlist.map((item) => ({
+        ...item,
+        list_id: validIds.has(item.list_id) ? item.list_id : defaultListId,
+      })),
+    );
+  }
+}
+
 function ensureSeeded() {
   if (!isBrowser) return;
+  ensureWatchlistCollections();
   if (window.localStorage.getItem(STORAGE_KEYS.bootstrapped)) return;
+
+  const collections = readCollection(STORAGE_KEYS.watchlistCollections);
+  const defaultListId = collections[0]?.id;
+
   if (readCollection(STORAGE_KEYS.watchlist).length === 0) {
-    const seededWatchlist = createDemoWatchlist().map((row) => ({
+    const seededWatchlist = createDemoWatchlist(defaultListId).map((row) => ({
       ...row,
       id: createId(),
       created_date: getNowIso(),
@@ -293,6 +333,7 @@ export const base44 = {
   entities: {
     Stock: createEntityApi(STORAGE_KEYS.stocks),
     Watchlist: createEntityApi(STORAGE_KEYS.watchlist),
+    WatchlistCollection: createEntityApi(STORAGE_KEYS.watchlistCollections),
   },
   integrations: {
     Core: {

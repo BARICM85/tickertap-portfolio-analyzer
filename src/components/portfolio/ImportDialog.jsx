@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { getStockProfile } from '@/lib/marketData';
+import { getStockProfile, resolveStockInput } from '@/lib/marketData';
 
 function excelSerialToIso(value) {
   if (!value) return undefined;
@@ -29,7 +29,9 @@ function aggregateWorkbookRows(rows = []) {
   const grouped = new Map();
 
   rows.forEach((row) => {
-    const symbol = String(row.Stock || '').trim().toUpperCase();
+    const stockValue = String(row.Symbol || row.Stock || row.Name || '').trim();
+    const resolved = resolveStockInput(stockValue);
+    const symbol = resolved?.symbol || stockValue.toUpperCase();
     if (!symbol) return;
 
     const broker = String(row.BROKER || '').trim().toUpperCase() || undefined;
@@ -42,7 +44,7 @@ function aggregateWorkbookRows(rows = []) {
     const profile = getStockProfile(symbol);
     const existing = grouped.get(symbol) || {
       symbol,
-      name: profile.name,
+      name: resolved?.name || profile.name,
       sector: profile.sector,
       exchange: profile.exchange,
       current_price: profile.current_price,
@@ -143,7 +145,7 @@ export default function ImportDialog({ open, onOpenChange, onImportComplete }) {
             <FileSpreadsheet className="mx-auto h-10 w-10 text-amber-300" />
             <p className="mt-4 text-lg font-medium text-white">Upload Excel workbook</p>
             <p className="mt-2 text-sm text-slate-400">
-              Required columns: BROKER, Stock, Buy Date, Buy Price, Qty, Buy Value
+              Required columns: BROKER, Stock, Buy Date, Buy Price, Qty, Buy Value. The Stock column can be symbol or company name.
             </p>
             <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileSelect} />
             <Button onClick={() => fileRef.current?.click()} disabled={isUploading} className="mt-5 rounded-2xl bg-amber-400 text-slate-950 hover:bg-amber-300">
@@ -154,7 +156,7 @@ export default function ImportDialog({ open, onOpenChange, onImportComplete }) {
 
           <div className="rounded-[24px] border border-white/10 bg-[#101826] p-4 text-sm text-slate-300">
             <p className="font-medium text-white">Workbook format</p>
-            <p className="mt-2">This importer now follows your sample Excel structure exactly and replaces the old CSV/JSON flow.</p>
+            <p className="mt-2">This importer follows your Excel structure and now resolves stocks from either ticker symbols or stock names.</p>
           </div>
 
           {result ? (
