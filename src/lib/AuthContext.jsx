@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { isFirebaseConfigured, loadFirebaseAuth, signInWithGooglePopup } from '@/lib/firebaseAuth';
+import { queryClientInstance } from '@/lib/query-client';
 
 const AuthContext = createContext(null);
 
@@ -24,6 +25,7 @@ export function AuthProvider({ children }) {
           if (!firebaseUser) {
             setUser(null);
             setIsLoadingAuth(false);
+            queryClientInstance.invalidateQueries();
             return;
           }
 
@@ -35,6 +37,7 @@ export function AuthProvider({ children }) {
             provider: 'firebase-google',
           });
           setIsLoadingAuth(false);
+          queryClientInstance.invalidateQueries();
         });
       })
       .catch(() => {
@@ -62,6 +65,7 @@ export function AuthProvider({ children }) {
     const { auth } = await loadFirebaseAuth();
     await auth.signOut();
     setUser(null);
+    queryClientInstance.invalidateQueries();
   }, []);
 
   const value = useMemo(() => ({

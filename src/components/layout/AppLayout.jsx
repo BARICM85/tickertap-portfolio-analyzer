@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { BarChart3, Briefcase, Eye, LogOut, Shield, TrendingUp, UserCircle2 } from 'lucide-react';
 import GoogleSignInButton from '@/components/auth/GoogleSignInButton';
+import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 import { formatCurrency } from '@/lib/portfolioAnalytics';
 
@@ -42,6 +43,11 @@ export default function AppLayout() {
       if (!response.ok) throw new Error('Unable to load index quotes.');
       return response.json();
     },
+  });
+  const { data: syncStatus } = useQuery({
+    queryKey: ['cloud-sync-status', user?.id || 'guest'],
+    queryFn: () => base44.sync.getStatus(),
+    staleTime: 30000,
   });
   const indexItems = indexPayload?.items || [];
   const hasDelayedIndices = indexItems.some((item) => item.delayed);
@@ -86,6 +92,17 @@ export default function AppLayout() {
               <p className="text-sm font-semibold">TickerTap Clone</p>
               <p className="text-xs text-slate-400">Portfolio analyzer</p>
             </div>
+            {syncStatus ? (
+              <div className={`hidden rounded-full px-3 py-1 text-[11px] font-semibold lg:inline-flex ${
+                syncStatus.mode === 'cloud-active'
+                  ? 'bg-emerald-400/15 text-emerald-300'
+                  : syncStatus.mode === 'cloud-error'
+                    ? 'bg-rose-400/15 text-rose-300'
+                    : 'bg-white/10 text-slate-300'
+              }`}>
+                {syncStatus.label}
+              </div>
+            ) : null}
           </div>
 
           <nav className="hidden flex-1 items-center justify-center gap-2 px-8 lg:flex">
@@ -101,6 +118,17 @@ export default function AppLayout() {
 
         <div className="border-t border-white/6 lg:hidden">
           <div className="mx-auto max-w-[1680px] px-4 py-2 lg:px-8">
+            {syncStatus ? (
+              <div className={`mb-2 inline-flex rounded-full px-3 py-1 text-[11px] font-semibold ${
+                syncStatus.mode === 'cloud-active'
+                  ? 'bg-emerald-400/15 text-emerald-300'
+                  : syncStatus.mode === 'cloud-error'
+                    ? 'bg-rose-400/15 text-rose-300'
+                    : 'bg-white/10 text-slate-300'
+              }`}>
+                {syncStatus.label}
+              </div>
+            ) : null}
             {accountCard ? <div className="mb-2">{accountCard}</div> : null}
             <div className="flex gap-2 overflow-x-auto">
             {NAV_ITEMS.map((item) => (
