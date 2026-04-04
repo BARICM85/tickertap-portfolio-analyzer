@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { AlertCircle, CheckCircle2, FileSpreadsheet, Loader2, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
@@ -25,9 +25,26 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+async function resolveImportRows(rows = []) {
+  const uniqueInputs = [...new Set(
+    rows
+      .map((row) => String(row.Stock || '').trim())
+      .filter(Boolean),
+  )];
+
+  const resolvedEntries = await Promise.all(uniqueInputs.map(async (input) => {
+    const resolved = await resolveStockInputAsync(input);
+    const suggestions = resolved ? [] : await searchStockSuggestionsAsync(input, 3);
+    return [input, { resolved, suggestions }];
+  }));
+
+  return new Map(resolvedEntries);
+}
+
 async function aggregateWorkbookRows(rows = []) {
   const grouped = new Map();
   const unresolved = [];
+  const resolvedMap = await resolveImportRows(rows);
 
   for (const [index, row] of rows.entries()) {
     const rawStock = String(row.Stock || '').trim();
@@ -40,12 +57,13 @@ async function aggregateWorkbookRows(rows = []) {
     const buyDate = excelSerialToIso(row['Buy Date']);
     if (!quantity || !buyPrice) continue;
 
-    const resolved = await resolveStockInputAsync(rawStock);
+    const resolvedEntry = resolvedMap.get(rawStock);
+    const resolved = resolvedEntry?.resolved || null;
     if (!resolved) {
       unresolved.push({
         row: index + 2,
         input: rawStock,
-        suggestions: await searchStockSuggestionsAsync(rawStock, 3),
+        suggestions: resolvedEntry?.suggestions || [],
       });
       continue;
     }
@@ -156,9 +174,6 @@ export default function ImportDialog({ open, onOpenChange, onImportComplete }) {
       <DialogContent className="max-w-lg border-white/10 bg-[#0c1422] text-white">
         <DialogHeader>
           <DialogTitle className="text-xl">Import Portfolio</DialogTitle>
-          <DialogDescription className="text-slate-400">
-            Upload your Excel workbook to replace current holdings with imported portfolio rows.
-          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">

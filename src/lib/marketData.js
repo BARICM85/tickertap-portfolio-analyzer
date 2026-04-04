@@ -159,6 +159,9 @@ const SECTOR_BENCHMARKS = {
   'Real Estate': { expected_return: 11, risk: 18 },
 };
 
+const MARKET_SEARCH_CACHE = new Map();
+const STOCK_RESOLUTION_CACHE = new Map();
+
 function hashSymbol(symbol = '') {
   return [...symbol.toUpperCase()].reduce((sum, char) => sum + char.charCodeAt(0), 0);
 }
@@ -270,20 +273,35 @@ async function fetchMarketSearch(query = '', limit = 8) {
   const trimmed = String(query || '').trim();
   if (!trimmed) return [];
 
+  const cacheKey = `${trimmed.toUpperCase()}::${limit}`;
+  if (MARKET_SEARCH_CACHE.has(cacheKey)) {
+    return MARKET_SEARCH_CACHE.get(cacheKey);
+  }
+
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
 
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
     const response = await fetch(
       `${apiBaseUrl}/api/market/search?q=${encodeURIComponent(trimmed)}&limit=${encodeURIComponent(limit)}`,
+      { signal: controller.signal },
     );
+    clearTimeout(timeout);
 
-    if (!response.ok) return [];
+    if (!response.ok) {
+      MARKET_SEARCH_CACHE.set(cacheKey, []);
+      return [];
+    }
 
     const payload = await response.json();
-    return (payload?.items || [])
+    const items = (payload?.items || [])
       .map(mapSearchItemToProfile)
       .filter(Boolean);
+    MARKET_SEARCH_CACHE.set(cacheKey, items);
+    return items;
   } catch {
+    MARKET_SEARCH_CACHE.set(cacheKey, []);
     return [];
   }
 }
@@ -326,11 +344,22 @@ export async function searchStockSuggestionsAsync(query = '', limit = 8) {
 }
 
 export async function resolveStockInputAsync(input = '') {
+  const cacheKey = normalizeSearchText(input);
+  if (!cacheKey) return null;
+  if (STOCK_RESOLUTION_CACHE.has(cacheKey)) {
+    return STOCK_RESOLUTION_CACHE.get(cacheKey);
+  }
+
   const local = resolveStockInput(input);
-  if (local) return local;
+  if (local) {
+    STOCK_RESOLUTION_CACHE.set(cacheKey, local);
+    return local;
+  }
 
   const remote = await searchStockSuggestionsAsync(input, 5);
-  return remote[0] || null;
+  const resolved = remote[0] || null;
+  STOCK_RESOLUTION_CACHE.set(cacheKey, resolved);
+  return resolved;
 }
 
 export function buildTimelinePoints(stock, months = 6) {
