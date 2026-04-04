@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileSpreadsheet, Loader2, Plus, Search, Target, Trash2 } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -189,6 +189,9 @@ export default function WatchlistPage() {
         <DialogContent className="max-w-lg border-white/10 bg-[#0c1422] text-white">
           <DialogHeader>
             <DialogTitle className="text-xl">Add To Watchlist</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Add a stock with a target price and notes to your watchlist.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>

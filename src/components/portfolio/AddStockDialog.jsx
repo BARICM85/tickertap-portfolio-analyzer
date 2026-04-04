@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Loader2, Plus, Search } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -125,6 +125,9 @@ export default function AddStockDialog({ open, onOpenChange, onStockAdded }) {
       <DialogContent className="max-w-xl border-white/10 bg-[#0c1422] text-white">
         <DialogHeader>
           <DialogTitle className="text-xl">Add Holding</DialogTitle>
+          <DialogDescription className="text-slate-400">
+            Add a stock to your portfolio with symbol, pricing, and optional notes.
+          </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
           <div>

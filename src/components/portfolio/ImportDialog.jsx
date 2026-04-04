@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { AlertCircle, CheckCircle2, FileSpreadsheet, Loader2, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
@@ -156,6 +156,9 @@ export default function ImportDialog({ open, onOpenChange, onImportComplete }) {
       <DialogContent className="max-w-lg border-white/10 bg-[#0c1422] text-white">
         <DialogHeader>
           <DialogTitle className="text-xl">Import Portfolio</DialogTitle>
+          <DialogDescription className="text-slate-400">
+            Upload your Excel workbook to replace current holdings with imported portfolio rows.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
