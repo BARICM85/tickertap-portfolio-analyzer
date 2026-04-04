@@ -247,6 +247,92 @@ export function resolveStockInput(input = '') {
   return searchStockCatalog(raw, 1)[0] || null;
 }
 
+function mapSearchItemToProfile(item = {}) {
+  const symbol = String(item.symbol || '').trim().toUpperCase();
+  if (!symbol) return null;
+
+  const profile = getStockProfile(symbol);
+  return {
+    symbol,
+    name: String(item.name || profile.name || symbol).trim(),
+    sector: profile.sector,
+    exchange: String(item.exchange || profile.exchange || 'NSE').trim().toUpperCase(),
+    current_price: profile.current_price,
+    beta: profile.beta,
+    pe_ratio: profile.pe_ratio,
+    market_cap: profile.market_cap,
+    dividend_yield: profile.dividend_yield,
+    type: item.type || 'stock',
+  };
+}
+
+async function fetchMarketSearch(query = '', limit = 8) {
+  const trimmed = String(query || '').trim();
+  if (!trimmed) return [];
+
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+
+  try {
+    const response = await fetch(
+      `${apiBaseUrl}/api/market/search?q=${encodeURIComponent(trimmed)}&limit=${encodeURIComponent(limit)}`,
+    );
+
+    if (!response.ok) return [];
+
+    const payload = await response.json();
+    return (payload?.items || [])
+      .map(mapSearchItemToProfile)
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function scoreResolvedCandidate(input = '', candidate = {}) {
+  const needle = normalizeSearchText(input);
+  const symbol = normalizeSearchText(candidate.symbol);
+  const name = normalizeSearchText(candidate.name);
+
+  if (symbol === needle) return 100;
+  if (name === needle) return 95;
+  if (symbol.startsWith(needle)) return 90;
+  if (name.startsWith(needle)) return 85;
+  if (symbol.includes(needle)) return 75;
+  if (name.includes(needle)) return 70;
+  return 0;
+}
+
+export async function searchStockSuggestionsAsync(query = '', limit = 8) {
+  const local = searchStockCatalog(query, limit);
+  const remote = await fetchMarketSearch(query, limit);
+  const merged = new Map();
+
+  [...local, ...remote].forEach((item) => {
+    if (!item?.symbol) return;
+    const existing = merged.get(item.symbol);
+    const scored = {
+      ...item,
+      score: scoreResolvedCandidate(query, item),
+    };
+
+    if (!existing || scored.score > existing.score) {
+      merged.set(item.symbol, scored);
+    }
+  });
+
+  return [...merged.values()]
+    .sort((left, right) => right.score - left.score || left.symbol.localeCompare(right.symbol))
+    .slice(0, limit);
+}
+
+export async function resolveStockInputAsync(input = '') {
+  const local = resolveStockInput(input);
+  if (local) return local;
+
+  const remote = await searchStockSuggestionsAsync(input, 5);
+  return remote[0] || null;
+}
+
 export function buildTimelinePoints(stock, months = 6) {
   const symbol = stock?.symbol?.toUpperCase() || 'STOCK';
   const profile = getStockProfile(symbol);

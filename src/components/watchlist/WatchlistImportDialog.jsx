@@ -5,29 +5,29 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { resolveStockInput, searchStockCatalog } from '@/lib/marketData';
+import { resolveStockInputAsync, searchStockSuggestionsAsync } from '@/lib/marketData';
 
 function toNumber(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function parseWatchlistRows(rows = []) {
+async function parseWatchlistRows(rows = []) {
   const entries = [];
   const unresolved = [];
 
-  rows.forEach((row, index) => {
+  for (const [index, row] of rows.entries()) {
     const rawStock = String(row.Stock || row.Symbol || row.Name || '').trim();
-    if (!rawStock) return;
+    if (!rawStock) continue;
 
-    const resolved = resolveStockInput(rawStock);
+    const resolved = await resolveStockInputAsync(rawStock);
     if (!resolved) {
       unresolved.push({
         row: index + 2,
         input: rawStock,
-        suggestions: searchStockCatalog(rawStock, 3),
+        suggestions: await searchStockSuggestionsAsync(rawStock, 3),
       });
-      return;
+      continue;
     }
 
     entries.push({
@@ -39,7 +39,7 @@ function parseWatchlistRows(rows = []) {
       target_price: toNumber(row['Target Price'] ?? row.Target ?? row['Buy Below'], resolved.current_price),
       notes: String(row.Notes || row.Note || '').trim() || undefined,
     });
-  });
+  }
 
   const deduped = new Map();
   entries.forEach((item) => {
@@ -69,7 +69,7 @@ export default function WatchlistImportDialog({ open, onOpenChange, onImportComp
       const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: null });
-      const parsed = parseWatchlistRows(rows);
+      const parsed = await parseWatchlistRows(rows);
 
       setParsedItems(parsed.items);
       setPreview({
@@ -138,7 +138,9 @@ export default function WatchlistImportDialog({ open, onOpenChange, onImportComp
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="font-medium text-white">Import preview</p>
-                  <p className="mt-1 text-slate-400">{preview.fileName} · {preview.rows} row{preview.rows === 1 ? '' : 's'} · {preview.items.length} stock{preview.items.length === 1 ? '' : 's'} ready</p>
+                  <p className="mt-1 text-slate-400">
+                    {preview.fileName} | {preview.rows} row{preview.rows === 1 ? '' : 's'} | {preview.items.length} stock{preview.items.length === 1 ? '' : 's'} ready
+                  </p>
                 </div>
                 <Button onClick={confirmImport} disabled={isUploading || preview.unresolved.length > 0} className="rounded-2xl bg-amber-300 text-slate-950 hover:bg-amber-200">
                   {isUploading ? <Loader2 className="animate-spin" /> : <Upload />}
@@ -175,7 +177,7 @@ export default function WatchlistImportDialog({ open, onOpenChange, onImportComp
                         <p className="mt-1 text-xs text-slate-300">
                           {item.suggestions.length
                             ? `Suggestions: ${item.suggestions.map((suggestion) => `${suggestion.symbol} (${suggestion.name})`).join(', ')}`
-                            : 'No close local match found.'}
+                            : 'No close catalog or market search match found.'}
                         </p>
                       </div>
                     ))}
