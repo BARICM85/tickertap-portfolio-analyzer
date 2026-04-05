@@ -213,6 +213,13 @@ function normalizeSearchText(value = '') {
     .replace(/[^A-Z0-9]/g, '');
 }
 
+function looksLikeTradingSymbol(value = '') {
+  const raw = String(value || '').trim().toUpperCase();
+  if (!raw) return false;
+  if (raw.includes(' ')) return false;
+  return /^[A-Z0-9&.-]{1,24}$/.test(raw);
+}
+
 export function searchStockCatalog(query = '', limit = 8) {
   const needle = query.trim().toUpperCase();
   if (!needle) return getCatalogSnapshot().slice(0, limit);
@@ -246,6 +253,13 @@ export function resolveStockInput(input = '') {
   const normalizedNeedle = normalizeSearchText(raw);
   const exactNameMatch = getCatalogSnapshot().find((item) => normalizeSearchText(item.name) === normalizedNeedle);
   if (exactNameMatch) return exactNameMatch;
+
+  if (looksLikeTradingSymbol(raw)) {
+    return {
+      symbol: raw.toUpperCase(),
+      ...fallbackEntry(raw),
+    };
+  }
 
   return searchStockCatalog(raw, 1)[0] || null;
 }
