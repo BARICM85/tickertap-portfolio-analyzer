@@ -1,7 +1,6 @@
 import { createDemoWatchlist, getStockProfile } from '@/lib/marketData';
 import { buildRiskNarrative, derivePortfolioAnalytics } from '@/lib/portfolioAnalytics';
 import { namespacedKey } from '@/lib/appConfig';
-import { isFirebaseConfigured, loadFirebaseDataLayer } from '@/lib/firebaseAuth';
 
 const STORAGE_KEYS = {
   stocks: namespacedKey('portfolio_analyzer_stocks'),
@@ -12,10 +11,6 @@ const STORAGE_KEYS = {
 
 const uploadedFiles = new Map();
 const isBrowser = typeof window !== 'undefined';
-const CLOUD_COLLECTIONS = {
-  [STORAGE_KEYS.stocks]: 'stocks',
-  [STORAGE_KEYS.watchlist]: 'watchlist',
-};
 
 function getNowIso() {
   return new Date().toISOString();
@@ -44,74 +39,8 @@ function writeCollection(key, rows) {
   window.localStorage.setItem(key, JSON.stringify(rows));
 }
 
-async function getCloudCollection(storageKey) {
-  if (!isBrowser || !isFirebaseConfigured()) return null;
-
-  try {
-    const { auth, db } = await loadFirebaseDataLayer();
-    const user = auth.currentUser;
-    const collectionName = CLOUD_COLLECTIONS[storageKey];
-    if (!user || !collectionName) return null;
-
-    return db.collection('portfolioAnalyzerUsers').doc(user.uid).collection(collectionName);
-  } catch {
-    return null;
-  }
-}
-
-async function syncLocalRowsToCloud(storageKey, rows) {
-  const collectionRef = await getCloudCollection(storageKey);
-  if (!collectionRef || !rows.length) return null;
-
-  try {
-    await Promise.all(rows.map(async (row) => {
-      const payload = {
-        ...row,
-        id: row.id || createId(),
-        created_date: row.created_date || getNowIso(),
-      };
-      await collectionRef.doc(payload.id).set(payload);
-    }));
-  } catch {
-    return null;
-  }
-  return rows;
-}
-
-async function syncRowsToCloudCollection(collectionRef, rows) {
-  const snapshot = await collectionRef.get();
-  const existingIds = new Set(snapshot.docs.map((doc) => doc.id));
-  const nextIds = new Set(rows.map((row) => row.id));
-
-  await Promise.all(rows.map(async (row) => {
-    await collectionRef.doc(row.id).set(row);
-  }));
-
-  await Promise.all([...existingIds]
-    .filter((id) => !nextIds.has(id))
-    .map((id) => collectionRef.doc(id).delete()));
-}
-
 async function readEntityRows(storageKey) {
-  const collectionRef = await getCloudCollection(storageKey);
-  if (!collectionRef) return readCollection(storageKey);
-
-  try {
-    const snapshot = await collectionRef.get();
-    if (snapshot.empty) {
-      const localRows = readCollection(storageKey);
-      if (localRows.length) {
-        void syncLocalRowsToCloud(storageKey, localRows);
-      }
-      return localRows;
-    }
-
-    const rows = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-    writeCollection(storageKey, rows);
-    return rows;
-  } catch {
-    return readCollection(storageKey);
-  }
+  return readCollection(storageKey);
 }
 
 async function writeEntityRows(storageKey, rows) {
@@ -121,21 +50,6 @@ async function writeEntityRows(storageKey, rows) {
     created_date: row.created_date || getNowIso(),
   }));
   writeCollection(storageKey, normalizedRows);
-
-  const collectionRef = await getCloudCollection(storageKey);
-  if (!collectionRef) return normalizedRows;
-
-  try {
-    if (normalizedRows.length > 25) {
-      void syncRowsToCloudCollection(collectionRef, normalizedRows).catch(() => {});
-      return normalizedRows;
-    }
-
-    await syncRowsToCloudCollection(collectionRef, normalizedRows);
-  } catch {
-    return normalizedRows;
-  }
-
   return normalizedRows;
 }
 

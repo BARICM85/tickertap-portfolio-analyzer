@@ -1,6 +1,5 @@
 const FIREBASE_APP_SCRIPT = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js';
 const FIREBASE_AUTH_SCRIPT = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js';
-const FIREBASE_FIRESTORE_SCRIPT = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js';
 
 let firebaseReadyPromise;
 
@@ -52,7 +51,6 @@ export async function loadFirebaseAuth() {
     firebaseReadyPromise = (async () => {
       await loadScript(FIREBASE_APP_SCRIPT);
       await loadScript(FIREBASE_AUTH_SCRIPT);
-      await loadScript(FIREBASE_FIRESTORE_SCRIPT);
 
       const firebase = window.firebase;
       if (!firebase) {
@@ -63,16 +61,11 @@ export async function loadFirebaseAuth() {
         firebase.initializeApp(getFirebaseConfig());
       }
 
-      return { firebase, auth: firebase.auth(), db: firebase.firestore() };
+      return { firebase, auth: firebase.auth() };
     })();
   }
 
   return firebaseReadyPromise;
-}
-
-export async function loadFirebaseDataLayer() {
-  const { firebase, auth, db } = await loadFirebaseAuth();
-  return { firebase, auth, db };
 }
 
 export async function signInWithGooglePopup() {
