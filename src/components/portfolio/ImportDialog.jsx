@@ -69,7 +69,7 @@ async function aggregateWorkbookRows(rows = []) {
     }
 
     const symbol = resolved.symbol;
-    const profile = getStockProfile(symbol);
+    const profile = resolved || getStockProfile(symbol);
     const existing = grouped.get(symbol) || {
       symbol,
       name: resolved.name || profile.name,

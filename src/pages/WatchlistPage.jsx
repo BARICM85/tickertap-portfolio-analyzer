@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileSpreadsheet, Loader2, Plus, Search, Target, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { getLiveMarketQuote } from '@/lib/brokerClient';
 import { getStockProfile } from '@/lib/marketData';
-import { derivePortfolioAnalytics, deriveWatchlistAnalytics, formatCurrency, formatPercent } from '@/lib/portfolioAnalytics';
+import { deriveWatchlistAnalytics, formatCurrency, formatPercent } from '@/lib/portfolioAnalytics';
 
 const INITIAL_FORM = { symbol: '', name: '', target_price: '', notes: '' };
 
@@ -32,8 +32,14 @@ export default function WatchlistPage() {
     queryFn: () => base44.entities.Stock.list('-created_date'),
   });
 
-  const holdings = derivePortfolioAnalytics(stocks);
-  const items = deriveWatchlistAnalytics(watchlist, holdings.holdings);
+  const ownedSymbols = useMemo(
+    () => new Set(stocks.map((row) => String(row.symbol || '').toUpperCase())),
+    [stocks],
+  );
+  const items = useMemo(
+    () => deriveWatchlistAnalytics(watchlist, ownedSymbols),
+    [ownedSymbols, watchlist],
+  );
 
   const lookup = async () => {
     if (!form.symbol.trim()) return;

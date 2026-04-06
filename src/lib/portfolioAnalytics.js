@@ -88,7 +88,11 @@ export function formatPercent(value, fractionDigits = 1) {
   return `${amount >= 0 ? '+' : ''}${amount.toFixed(fractionDigits)}%`;
 }
 
-export function enrichHolding(stock) {
+export function enrichHolding(stock, options = {}) {
+  const {
+    includeTimeline = true,
+    includeScenarios = true,
+  } = options;
   const profile = getStockProfile(stock?.symbol);
   const quantity = toNumber(stock?.quantity);
   const buyPrice = toNumber(stock?.buy_price, profile.current_price);
@@ -142,8 +146,8 @@ export function enrichHolding(stock) {
     monthlyIncome,
     benchmark,
     convictionScore,
-    timeline: buildTimelinePoints({ ...stock, current_price: currentPrice, buy_price: buyPrice }),
-    scenarios: buildScenarioPrices({ ...stock, current_price: currentPrice, buy_price: buyPrice, beta: toNumber(stock?.beta, profile.beta) }),
+    timeline: includeTimeline ? buildTimelinePoints({ ...stock, current_price: currentPrice, buy_price: buyPrice }) : [],
+    scenarios: includeScenarios ? buildScenarioPrices({ ...stock, current_price: currentPrice, buy_price: buyPrice, beta: toNumber(stock?.beta, profile.beta) }) : [],
     thesis: stock?.notes || profile.thesis,
     broker: stock?.broker || purchaseHistory[0]?.broker || undefined,
     purchase_history: purchaseHistory,
@@ -186,8 +190,8 @@ function buildPortfolioHistorySeries(holdings = []) {
   });
 }
 
-export function derivePortfolioAnalytics(stocks = []) {
-  const holdings = stocks.map(enrichHolding);
+export function derivePortfolioAnalytics(stocks = [], options = {}) {
+  const holdings = stocks.map((stock) => enrichHolding(stock, options));
   const totalInvested = holdings.reduce((sum, row) => sum + row.invested, 0);
   const totalValue = holdings.reduce((sum, row) => sum + row.value, 0);
   const totalPnL = totalValue - totalInvested;
@@ -225,22 +229,6 @@ export function derivePortfolioAnalytics(stocks = []) {
     ? 0
     : Math.max(20, Math.round(100 - ((sectorExposure[0]?.allocation || 0) * 0.9) - (withAllocation[0]?.allocation || 0) * 0.7));
 
-  const hhi = withAllocation.reduce((sum, row) => {
-    const weight = row.allocation / 100;
-    return sum + (weight * weight);
-  }, 0);
-  const effectiveHoldings = hhi > 0 ? 1 / hhi : 0;
-  const topThreeShare = withAllocation.slice(0, 3).reduce((sum, row) => sum + row.allocation, 0);
-  const sectorCount = sectorExposure.length;
-  const defensiveSectors = new Set(['Consumer Staples', 'Healthcare', 'Utilities']);
-  const defensiveAllocation = withAllocation
-    .filter((row) => defensiveSectors.has(row.sector))
-    .reduce((sum, row) => sum + row.allocation, 0);
-  const cyclicalAllocation = Math.max(0, 100 - defensiveAllocation);
-  const downsideStress5 = totalValue * ((weightedBeta || 1) * -0.05);
-  const downsideStress10 = totalValue * ((weightedBeta || 1) * -0.1);
-  const downsideStress15 = totalValue * ((weightedBeta || 1) * -0.15);
-
   const riskScore = withAllocation.length === 0
     ? 0
     : Math.max(18, Math.min(94, Math.round(
@@ -276,17 +264,6 @@ export function derivePortfolioAnalytics(stocks = []) {
       weightedBeta,
       diversificationScore,
       riskScore,
-      concentrationIndex: hhi * 10000,
-      effectiveHoldings,
-      largestHoldingAllocation: withAllocation[0]?.allocation || 0,
-      largestSectorAllocation: sectorExposure[0]?.allocation || 0,
-      topThreeShare,
-      sectorCount,
-      defensiveAllocation,
-      cyclicalAllocation,
-      downsideStress5,
-      downsideStress10,
-      downsideStress15,
     },
     sectorExposure,
     topWinner,
@@ -299,16 +276,13 @@ export function derivePortfolioAnalytics(stocks = []) {
       pnlPercent: row.pnlPercent,
       allocation: row.allocation,
     })),
-    stressSeries: [
-      { label: '5% market drop', value: downsideStress5 },
-      { label: '10% market drop', value: downsideStress10 },
-      { label: '15% market drop', value: downsideStress15 },
-    ],
   };
 }
 
-export function deriveWatchlistAnalytics(items = [], holdings = []) {
-  const ownedSymbols = new Set((holdings || []).map((row) => row.symbol));
+export function deriveWatchlistAnalytics(items = [], holdingsOrSymbols = []) {
+  const ownedSymbols = holdingsOrSymbols instanceof Set
+    ? holdingsOrSymbols
+    : new Set((holdingsOrSymbols || []).map((row) => String(row.symbol || '').toUpperCase()));
 
   return items.map((item) => {
     const profile = getStockProfile(item?.symbol);
@@ -348,16 +322,13 @@ export function buildRiskNarrative(analytics) {
       biggestSector
         ? `${biggestSector.sector} is the largest sector weight at ${biggestSector.allocation.toFixed(1)}%.`
         : 'Sector exposure is not available yet.',
-      totals.topThreeShare
-        ? `Top three holdings together control ${totals.topThreeShare.toFixed(1)}% of current portfolio value.`
-        : 'Top holding concentration will appear after you add stocks.',
       totals.weightedBeta > 1
         ? `Weighted beta of ${totals.weightedBeta.toFixed(2)} suggests above-market sensitivity.`
         : `Weighted beta of ${totals.weightedBeta.toFixed(2)} keeps volatility closer to defensive levels.`,
     ],
     summary: holdings.length === 0
       ? 'Add holdings to generate a portfolio risk narrative.'
-      : `Risk score ${totals.riskScore}/100 with diversification score ${totals.diversificationScore}/100. Effective holdings are ${totals.effectiveHoldings.toFixed(1)}, and the main pressure points are concentration, sector clustering, and portfolio beta.`,
+      : `Risk score ${totals.riskScore}/100 with diversification score ${totals.diversificationScore}/100. The main pressure points are concentration, sector clustering, and portfolio beta.`,
   };
 }
 

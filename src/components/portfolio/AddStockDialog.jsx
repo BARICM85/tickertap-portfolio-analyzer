@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Loader2, Plus, Search } from 'lucide-react';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import StockAutocompleteInput from '@/components/shared/StockAutocompleteInput';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
+import { getLiveMarketQuote } from '@/lib/brokerClient';
+import { getStockProfile } from '@/lib/marketData';
 
 const SECTORS = [
   'Technology',
@@ -38,58 +40,34 @@ export default function AddStockDialog({ open, onOpenChange, onStockAdded }) {
   const [form, setForm] = useState(INITIAL_FORM);
   const [isSearching, setIsSearching] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
 
   const updateForm = (patch) => setForm((current) => ({ ...current, ...patch }));
 
   const handleLookup = async () => {
     if (!form.symbol.trim()) return;
     setIsSearching(true);
+    const symbol = form.symbol.toUpperCase();
+    const profile = getStockProfile(symbol);
     try {
-      const liveResponse = await fetch(`${apiBaseUrl}/api/market/quote?symbol=${encodeURIComponent(form.symbol.toUpperCase())}`);
-      if (!liveResponse.ok) throw new Error('Live lookup failed');
-      const liveQuote = await liveResponse.json();
-      const fallbackProfile = await base44.integrations.Core.InvokeLLM({
-        prompt: `Give me info about the Indian stock with ticker symbol "${form.symbol.toUpperCase()}" listed on NSE/BSE. I need: company name, sector, current stock price in INR (Indian Rupees), beta, PE ratio, market cap, and dividend yield.`,
-        response_json_schema: {
-          type: 'object',
-          properties: {
-            name: { type: 'string' },
-            sector: { type: 'string' },
-            current_price: { type: 'number' },
-          },
-        },
-      });
+      const liveQuote = await getLiveMarketQuote(symbol, { timeoutMs: 3500 });
 
       updateForm({
-        symbol: form.symbol.toUpperCase(),
-        name: liveQuote.shortName || fallbackProfile.name || form.name,
-        sector: fallbackProfile.sector || form.sector,
-        buy_price: form.buy_price || String(liveQuote.price || fallbackProfile.current_price || ''),
-        current_price: String(liveQuote.price || fallbackProfile.current_price || form.current_price || ''),
+        symbol,
+        name: liveQuote.shortName || profile.name || form.name,
+        sector: profile.sector || form.sector,
+        buy_price: form.buy_price || String(liveQuote.price || profile.current_price || ''),
+        current_price: String(liveQuote.price || profile.current_price || form.current_price || ''),
       });
-      toast.success(`Live quote loaded for ${form.symbol.toUpperCase()}.`);
+      toast.success(`Live quote loaded for ${symbol}.`);
     } catch {
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `Give me info about the Indian stock with ticker symbol "${form.symbol.toUpperCase()}" listed on NSE/BSE. I need: company name, sector, current stock price in INR (Indian Rupees), beta, PE ratio, market cap, and dividend yield.`,
-        response_json_schema: {
-          type: 'object',
-          properties: {
-            name: { type: 'string' },
-            sector: { type: 'string' },
-            current_price: { type: 'number' },
-          },
-        },
-      });
-
       updateForm({
-        symbol: form.symbol.toUpperCase(),
-        name: result.name || form.name,
-        sector: result.sector || form.sector,
-        buy_price: form.buy_price || String(result.current_price || ''),
-        current_price: String(result.current_price || form.current_price || ''),
+        symbol,
+        name: profile.name || form.name,
+        sector: profile.sector || form.sector,
+        buy_price: form.buy_price || String(profile.current_price || ''),
+        current_price: String(profile.current_price || form.current_price || ''),
       });
-      toast.success(`Local market profile loaded for ${form.symbol.toUpperCase()}.`);
+      toast.success(`Local market profile loaded for ${symbol}.`);
     } finally {
       setIsSearching(false);
     }
@@ -125,9 +103,6 @@ export default function AddStockDialog({ open, onOpenChange, onStockAdded }) {
       <DialogContent className="max-w-xl border-white/10 bg-[#0c1422] text-white">
         <DialogHeader>
           <DialogTitle className="text-xl">Add Holding</DialogTitle>
-          <DialogDescription className="text-slate-400">
-            Add a stock to your portfolio with symbol, pricing, and optional notes.
-          </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
           <div>

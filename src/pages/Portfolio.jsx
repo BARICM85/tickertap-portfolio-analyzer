@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { Download, FileSpreadsheet, Loader2, Plus, Search, Trash2, Zap } from 'lucide-react';
@@ -38,7 +38,10 @@ export default function Portfolio() {
     queryFn: () => base44.entities.Stock.list('-created_date'),
   });
 
-  const analytics = derivePortfolioAnalytics(stocks);
+  const analytics = useMemo(
+    () => derivePortfolioAnalytics(stocks, { includeTimeline: false, includeScenarios: false }),
+    [stocks],
+  );
 
   useEffect(() => {
     const broker = searchParams.get('broker');
@@ -56,10 +59,13 @@ export default function Portfolio() {
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
-  const filteredStocks = analytics.holdings.filter((stock) => {
-    const haystack = `${stock.symbol} ${stock.name} ${stock.sector}`.toLowerCase();
-    return haystack.includes(search.toLowerCase());
-  });
+  const filteredStocks = useMemo(() => {
+    const needle = search.toLowerCase();
+    return analytics.holdings.filter((stock) => {
+      const haystack = `${stock.symbol} ${stock.name} ${stock.sector}`.toLowerCase();
+      return haystack.includes(needle);
+    });
+  }, [analytics.holdings, search]);
 
   const refreshAll = async () => {
     setRefreshingId('all');

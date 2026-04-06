@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, ArrowRight, Shield } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
@@ -10,9 +10,12 @@ export default function RiskAnalysis() {
     queryFn: () => base44.entities.Stock.list('-created_date'),
   });
 
-  const analytics = derivePortfolioAnalytics(stocks);
-  const narrative = buildRiskNarrative(analytics);
-  const report = {
+  const analytics = useMemo(
+    () => derivePortfolioAnalytics(stocks, { includeTimeline: false, includeScenarios: false }),
+    [stocks],
+  );
+  const narrative = useMemo(() => buildRiskNarrative(analytics), [analytics]);
+  const report = useMemo(() => ({
     risk_score: analytics.totals.riskScore,
     diversification_score: analytics.totals.diversificationScore,
     concentration_risks: analytics.holdings
@@ -30,7 +33,7 @@ export default function RiskAnalysis() {
     risk_factors: narrative.riskFactors,
     hedging_suggestions: analytics.rebalanceIdeas.map((idea) => ({ strategy: `${idea.action} ${idea.symbol}`, description: idea.reason })),
     summary: narrative.summary,
-  };
+  }), [analytics, narrative]);
 
   return (
     <div className="space-y-6">

@@ -104,7 +104,7 @@ function buildStockAnalysis(symbol = '') {
 
 function buildRiskReport() {
   const holdings = readCollection(STORAGE_KEYS.stocks);
-  const analytics = derivePortfolioAnalytics(holdings);
+  const analytics = derivePortfolioAnalytics(holdings, { includeTimeline: false, includeScenarios: false });
   const narrative = buildRiskNarrative(analytics);
 
   return {
