@@ -6,7 +6,6 @@ import { isFirebaseConfigured, loadFirebaseDataLayer } from '@/lib/firebaseAuth'
 const STORAGE_KEYS = {
   stocks: namespacedKey('portfolio_analyzer_stocks'),
   watchlist: namespacedKey('portfolio_analyzer_watchlist'),
-  watchlistCollections: namespacedKey('portfolio_analyzer_watchlist_collections'),
   session: namespacedKey('portfolio_analyzer_session'),
   bootstrapped: namespacedKey('portfolio_analyzer_bootstrapped'),
 };
@@ -16,7 +15,6 @@ const isBrowser = typeof window !== 'undefined';
 const CLOUD_COLLECTIONS = {
   [STORAGE_KEYS.stocks]: 'stocks',
   [STORAGE_KEYS.watchlist]: 'watchlist',
-  [STORAGE_KEYS.watchlistCollections]: 'watchlistCollections',
 };
 
 function getNowIso() {
@@ -61,34 +59,6 @@ async function getCloudCollection(storageKey) {
   }
 }
 
-async function getCloudSyncStatus() {
-  if (!isBrowser) {
-    return { mode: 'local-only', label: 'Local only', detail: 'Browser storage on this device' };
-  }
-
-  if (!isFirebaseConfigured()) {
-    return { mode: 'local-only', label: 'Local only', detail: 'Firebase is not configured' };
-  }
-
-  try {
-    const { auth, db } = await loadFirebaseDataLayer();
-    const user = auth.currentUser;
-
-    if (!user) {
-      return { mode: 'local-only', label: 'Local only', detail: 'Sign in to sync across devices' };
-    }
-
-    await db.collection('portfolioAnalyzerUsers').doc(user.uid).collection('stocks').limit(1).get();
-    return { mode: 'cloud-active', label: 'Cloud sync active', detail: 'Changes sync for this signed-in account' };
-  } catch (error) {
-    return {
-      mode: 'cloud-error',
-      label: 'Cloud sync unavailable',
-      detail: error?.message || 'Firestore is blocked or not enabled',
-    };
-  }
-}
-
 async function syncLocalRowsToCloud(storageKey, rows) {
   const collectionRef = await getCloudCollection(storageKey);
   if (!collectionRef || !rows.length) return null;
@@ -108,6 +78,20 @@ async function syncLocalRowsToCloud(storageKey, rows) {
   return rows;
 }
 
+async function syncRowsToCloudCollection(collectionRef, rows) {
+  const snapshot = await collectionRef.get();
+  const existingIds = new Set(snapshot.docs.map((doc) => doc.id));
+  const nextIds = new Set(rows.map((row) => row.id));
+
+  await Promise.all(rows.map(async (row) => {
+    await collectionRef.doc(row.id).set(row);
+  }));
+
+  await Promise.all([...existingIds]
+    .filter((id) => !nextIds.has(id))
+    .map((id) => collectionRef.doc(id).delete()));
+}
+
 async function readEntityRows(storageKey) {
   const collectionRef = await getCloudCollection(storageKey);
   if (!collectionRef) return readCollection(storageKey);
@@ -117,7 +101,7 @@ async function readEntityRows(storageKey) {
     if (snapshot.empty) {
       const localRows = readCollection(storageKey);
       if (localRows.length) {
-        await syncLocalRowsToCloud(storageKey, localRows);
+        void syncLocalRowsToCloud(storageKey, localRows);
       }
       return localRows;
     }
@@ -142,17 +126,12 @@ async function writeEntityRows(storageKey, rows) {
   if (!collectionRef) return normalizedRows;
 
   try {
-    const snapshot = await collectionRef.get();
-    const existingIds = new Set(snapshot.docs.map((doc) => doc.id));
-    const nextIds = new Set(normalizedRows.map((row) => row.id));
+    if (normalizedRows.length > 25) {
+      void syncRowsToCloudCollection(collectionRef, normalizedRows).catch(() => {});
+      return normalizedRows;
+    }
 
-    await Promise.all(normalizedRows.map(async (row) => {
-      await collectionRef.doc(row.id).set(row);
-    }));
-
-    await Promise.all([...existingIds]
-      .filter((id) => !nextIds.has(id))
-      .map((id) => collectionRef.doc(id).delete()));
+    await syncRowsToCloudCollection(collectionRef, normalizedRows);
   } catch {
     return normalizedRows;
   }
@@ -181,9 +160,6 @@ function ensureSeeded() {
       created_date: getNowIso(),
     }));
     writeCollection(STORAGE_KEYS.watchlist, seededWatchlist);
-  }
-  if (readCollection(STORAGE_KEYS.watchlistCollections).length === 0) {
-    writeCollection(STORAGE_KEYS.watchlistCollections, []);
   }
   window.localStorage.setItem(STORAGE_KEYS.bootstrapped, 'true');
 }
@@ -413,10 +389,6 @@ export const base44 = {
   entities: {
     Stock: createEntityApi(STORAGE_KEYS.stocks),
     Watchlist: createEntityApi(STORAGE_KEYS.watchlist),
-    WatchlistCollection: createEntityApi(STORAGE_KEYS.watchlistCollections),
-  },
-  sync: {
-    getStatus: getCloudSyncStatus,
   },
   integrations: {
     Core: {
