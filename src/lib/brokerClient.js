@@ -44,6 +44,14 @@ export function disconnectZerodha() {
   return request('/api/zerodha/disconnect', { method: 'POST' });
 }
 
+export function getLiveMarketQuote(symbol) {
+  return request(`/api/market/quote?symbol=${encodeURIComponent(symbol)}`);
+}
+
+export function getLiveMarketHistory(symbol, range = 'ytd', interval = '1d') {
+  return request(`/api/market/history?symbol=${encodeURIComponent(symbol)}&range=${encodeURIComponent(range)}&interval=${encodeURIComponent(interval)}`);
+}
+
 export function mapZerodhaHoldingToPortfolio(holding) {
   const symbol = holding.tradingsymbol || holding.symbol;
   const currentPrice = Number(holding.last_price || holding.close_price || 0);

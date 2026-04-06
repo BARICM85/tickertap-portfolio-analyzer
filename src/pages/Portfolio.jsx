@@ -11,6 +11,7 @@ import AddStockDialog from '@/components/portfolio/AddStockDialog';
 import ImportDialog from '@/components/portfolio/ImportDialog';
 import StockTable from '@/components/portfolio/StockTable';
 import { derivePortfolioAnalytics, formatCompactCurrency, formatCurrency, formatPercent } from '@/lib/portfolioAnalytics';
+import { getLiveMarketQuote } from '@/lib/brokerClient';
 
 function exportPortfolio(rows) {
   const content = JSON.stringify(rows, null, 2);
@@ -32,8 +33,6 @@ export default function Portfolio() {
   const [refreshingId, setRefreshingId] = useState(null);
   const [search, setSearch] = useState('');
   const queryClient = useQueryClient();
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
-
   const { data: stocks = [], isLoading } = useQuery({
     queryKey: ['stocks'],
     queryFn: () => base44.entities.Stock.list('-created_date'),
@@ -62,31 +61,58 @@ export default function Portfolio() {
     return haystack.includes(search.toLowerCase());
   });
 
+  const fetchQuoteWithTimeout = async (symbol) => {
+    const timeoutPromise = new Promise((_, reject) => {
+      window.setTimeout(() => reject(new Error(`Quote timeout for ${symbol}`)), 4500);
+    });
+
+    return Promise.race([
+      getLiveMarketQuote(symbol),
+      timeoutPromise,
+    ]);
+  };
+
   const refreshAll = async () => {
     setRefreshingId('all');
-    const settled = await Promise.allSettled(stocks.map(async (stock) => {
-      const response = await fetch(`${apiBaseUrl}/api/market/quote?symbol=${encodeURIComponent(stock.symbol)}`);
-      if (!response.ok) throw new Error(stock.symbol);
-      const quote = await response.json();
-      if (Number.isFinite(quote.price) && quote.price > 0) {
-        await base44.entities.Stock.update(stock.id, { current_price: quote.price });
-      }
-    }));
-    await queryClient.invalidateQueries({ queryKey: ['stocks'] });
-    setRefreshingId(null);
+    try {
+      const settled = await Promise.allSettled(stocks.map(async (stock) => {
+        const quote = await fetchQuoteWithTimeout(stock.symbol);
+        return {
+          id: stock.id,
+          price: Number(quote?.price || 0),
+        };
+      }));
 
-    const failed = settled.filter((entry) => entry.status === 'rejected').length;
-    if (failed === 0) toast.success('Live market prices fetched for all holdings.');
-    else if (failed === stocks.length) toast.error('Live price fetch failed for all holdings.');
-    else toast.success(`Live prices updated with ${failed} fallback${failed === 1 ? '' : 's'}.`);
+      const updates = new Map(
+        settled
+          .filter((entry) => entry.status === 'fulfilled' && Number.isFinite(entry.value.price) && entry.value.price > 0)
+          .map((entry) => [entry.value.id, entry.value.price]),
+      );
+
+      if (updates.size > 0) {
+        const nextStocks = stocks.map((stock) => (
+          updates.has(stock.id)
+            ? { ...stock, current_price: updates.get(stock.id) }
+            : stock
+        ));
+        await base44.entities.Stock.replace(nextStocks);
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ['stocks'] });
+
+      const failed = settled.filter((entry) => entry.status === 'rejected').length;
+      if (updates.size === 0) toast.error('Live price fetch failed for all holdings.');
+      else if (failed === 0) toast.success('Live market prices fetched for all holdings.');
+      else toast.success(`Live prices updated for ${updates.size} holdings with ${failed} fallback${failed === 1 ? '' : 's'}.`);
+    } finally {
+      setRefreshingId(null);
+    }
   };
 
   const refreshOne = async (stock) => {
     setRefreshingId(stock.id);
     try {
-      const response = await fetch(`${apiBaseUrl}/api/market/quote?symbol=${encodeURIComponent(stock.symbol)}`);
-      if (!response.ok) throw new Error('Live quote unavailable');
-      const quote = await response.json();
+      const quote = await fetchQuoteWithTimeout(stock.symbol);
       await base44.entities.Stock.update(stock.id, { current_price: quote.price || stock.current_price });
       toast.success(`${stock.symbol} live price updated.`);
     } catch {
