@@ -1,14 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, ArrowRight, Shield, Sparkles } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { AlertTriangle, ArrowRight, Shield } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { buildRiskNarrative, derivePortfolioAnalytics, formatCurrency } from '@/lib/portfolioAnalytics';
 
 export default function RiskAnalysis() {
-  const [riskReport, setRiskReport] = useState(null);
-  const [loading, setLoading] = useState(false);
-
   const { data: stocks = [] } = useQuery({
     queryKey: ['stocks'],
     queryFn: () => base44.entities.Stock.list('-created_date'),
@@ -16,30 +12,7 @@ export default function RiskAnalysis() {
 
   const analytics = derivePortfolioAnalytics(stocks);
   const narrative = buildRiskNarrative(analytics);
-
-  const runAnalysis = async () => {
-    setLoading(true);
-    const result = await base44.integrations.Core.InvokeLLM({
-      prompt: 'Analyze this stock portfolio for risk. Provide a comprehensive risk analysis including risk score, diversification score, concentration risks, sector exposure, portfolio beta, key risk factors, hedging recommendations, and summary.',
-      response_json_schema: {
-        type: 'object',
-        properties: {
-          risk_score: { type: 'number' },
-          diversification_score: { type: 'number' },
-          concentration_risks: { type: 'array' },
-          sector_exposure: { type: 'array' },
-          portfolio_beta: { type: 'number' },
-          risk_factors: { type: 'array' },
-          hedging_suggestions: { type: 'array' },
-          summary: { type: 'string' },
-        },
-      },
-    });
-    setRiskReport(result);
-    setLoading(false);
-  };
-
-  const report = riskReport || {
+  const report = {
     risk_score: analytics.totals.riskScore,
     diversification_score: analytics.totals.diversificationScore,
     concentration_risks: analytics.holdings
@@ -59,15 +32,6 @@ export default function RiskAnalysis() {
     summary: narrative.summary,
   };
 
-  const headlineCards = [
-    { label: 'Risk Score', value: `${report.risk_score}/100`, note: report.risk_score >= 65 ? 'Higher risk posture' : 'Contained risk posture' },
-    { label: 'Diversification', value: `${report.diversification_score}/100`, note: 'Higher is healthier' },
-    { label: 'Portfolio Beta', value: report.portfolio_beta.toFixed(2), note: 'Volatility vs benchmark' },
-    { label: 'Effective Holdings', value: analytics.totals.effectiveHoldings.toFixed(1), note: 'Lower means hidden concentration' },
-    { label: 'Top 3 Exposure', value: `${analytics.totals.topThreeShare.toFixed(1)}%`, note: 'Three largest names combined' },
-    { label: '10% Stress Test', value: formatCurrency(analytics.totals.downsideStress10), note: 'Estimated hit if market drops 10%' },
-  ];
-
   return (
     <div className="space-y-6">
       <section className="rounded-[36px] border border-white/10 bg-[#0b1624]/90 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.24)]">
@@ -79,15 +43,18 @@ export default function RiskAnalysis() {
               Review concentration, sector clustering, portfolio beta, and rebalance ideas in the same place you manage holdings.
             </p>
           </div>
-          <Button onClick={runAnalysis} disabled={loading || analytics.holdings.length === 0} className="rounded-2xl bg-amber-300 text-slate-950 hover:bg-amber-200">
-            <Sparkles />
-            {loading ? 'Analyzing' : 'Run Full Analysis'}
-          </Button>
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-300">
+            Auto-calculated from current portfolio holdings
+          </div>
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {headlineCards.map((card) => (
+      <section className="grid gap-4 md:grid-cols-3">
+        {[
+          { label: 'Risk Score', value: `${report.risk_score}/100`, note: report.risk_score >= 65 ? 'Higher risk posture' : 'Contained risk posture' },
+          { label: 'Diversification', value: `${report.diversification_score}/100`, note: 'Higher is healthier' },
+          { label: 'Portfolio Beta', value: report.portfolio_beta.toFixed(2), note: 'Volatility vs benchmark' },
+        ].map((card) => (
           <div key={card.label} className="rounded-[28px] border border-white/10 bg-[#0b1624]/90 p-5">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{card.label}</p>
             <p className="mt-3 text-3xl font-semibold text-white">{card.value}</p>
@@ -175,41 +142,6 @@ export default function RiskAnalysis() {
               <ArrowRight className="h-4 w-4 text-amber-300" />
               Review the largest sector and largest position before adding new capital.
             </p>
-          </div>
-        </section>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
-        <section className="rounded-[32px] border border-white/10 bg-[#0b1624]/90 p-6">
-          <h2 className="text-xl font-semibold text-white">Stress Ladder</h2>
-          <div className="mt-5 grid gap-3 md:grid-cols-3">
-            {analytics.stressSeries.map((scenario) => (
-              <div key={scenario.label} className="rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
-                <p className="text-xs uppercase tracking-[0.22em] text-slate-500">{scenario.label}</p>
-                <p className="mt-3 text-2xl font-semibold text-rose-300">{formatCurrency(scenario.value)}</p>
-                <p className="mt-2 text-sm text-slate-400">Beta-adjusted drawdown estimate</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="rounded-[32px] border border-white/10 bg-[#0b1624]/90 p-6">
-          <h2 className="text-xl font-semibold text-white">Portfolio Structure</h2>
-          <div className="mt-5 grid gap-3 md:grid-cols-2">
-            {[
-              { label: 'Largest Holding', value: `${analytics.totals.largestHoldingAllocation.toFixed(1)}%`, note: 'Single-position concentration' },
-              { label: 'Largest Sector', value: `${analytics.totals.largestSectorAllocation.toFixed(1)}%`, note: 'Sector clustering pressure' },
-              { label: 'Defensive Mix', value: `${analytics.totals.defensiveAllocation.toFixed(1)}%`, note: 'Staples, healthcare, utilities' },
-              { label: 'Cyclical Mix', value: `${analytics.totals.cyclicalAllocation.toFixed(1)}%`, note: 'Growth and macro-sensitive buckets' },
-              { label: 'Sector Count', value: String(analytics.totals.sectorCount), note: 'Unique sectors represented' },
-              { label: 'HHI', value: analytics.totals.concentrationIndex.toFixed(0), note: 'Lower concentration is healthier' },
-            ].map((item) => (
-              <div key={item.label} className="rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
-                <p className="text-xs uppercase tracking-[0.22em] text-slate-500">{item.label}</p>
-                <p className="mt-3 text-2xl font-semibold text-white">{item.value}</p>
-                <p className="mt-2 text-sm text-slate-400">{item.note}</p>
-              </div>
-            ))}
           </div>
         </section>
       </div>

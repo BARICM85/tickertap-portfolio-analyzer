@@ -9,6 +9,8 @@ import StockAutocompleteInput from '@/components/shared/StockAutocompleteInput';
 import WatchlistImportDialog from '@/components/watchlist/WatchlistImportDialog';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
+import { getLiveMarketQuote } from '@/lib/brokerClient';
+import { getStockProfile } from '@/lib/marketData';
 import { derivePortfolioAnalytics, deriveWatchlistAnalytics, formatCurrency, formatPercent } from '@/lib/portfolioAnalytics';
 
 const INITIAL_FORM = { symbol: '', name: '', target_price: '', notes: '' };
@@ -36,23 +38,27 @@ export default function WatchlistPage() {
   const lookup = async () => {
     if (!form.symbol.trim()) return;
     setIsSearching(true);
-    const result = await base44.integrations.Core.InvokeLLM({
-      prompt: `What is the company name and current stock price in INR for Indian stock ticker "${form.symbol.toUpperCase()}" listed on NSE/BSE?`,
-      response_json_schema: {
-        type: 'object',
-        properties: {
-          name: { type: 'string' },
-          price: { type: 'number' },
-        },
-      },
-    });
-    setForm((current) => ({
-      ...current,
-      symbol: current.symbol.toUpperCase(),
-      name: result.name || current.name,
-      target_price: current.target_price || String(result.price || ''),
-    }));
-    setIsSearching(false);
+    try {
+      const symbol = form.symbol.toUpperCase();
+      const quote = await getLiveMarketQuote(symbol, { timeoutMs: 3500 });
+      const profile = getStockProfile(symbol);
+      setForm((current) => ({
+        ...current,
+        symbol,
+        name: quote.shortName || profile.name || current.name,
+        target_price: current.target_price || String(quote.price || profile.current_price || ''),
+      }));
+    } catch {
+      const profile = getStockProfile(form.symbol.toUpperCase());
+      setForm((current) => ({
+        ...current,
+        symbol: current.symbol.toUpperCase(),
+        name: profile.name || current.name,
+        target_price: current.target_price || String(profile.current_price || ''),
+      }));
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   const save = async () => {

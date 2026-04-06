@@ -11,7 +11,7 @@ import AddStockDialog from '@/components/portfolio/AddStockDialog';
 import ImportDialog from '@/components/portfolio/ImportDialog';
 import StockTable from '@/components/portfolio/StockTable';
 import { derivePortfolioAnalytics, formatCompactCurrency, formatCurrency, formatPercent } from '@/lib/portfolioAnalytics';
-import { getLiveMarketQuote } from '@/lib/brokerClient';
+import { getLiveMarketQuote, getLiveMarketQuotes } from '@/lib/brokerClient';
 
 function exportPortfolio(rows) {
   const content = JSON.stringify(rows, null, 2);
@@ -61,33 +61,19 @@ export default function Portfolio() {
     return haystack.includes(search.toLowerCase());
   });
 
-  const fetchQuoteWithTimeout = async (symbol) => {
-    const timeoutPromise = new Promise((_, reject) => {
-      window.setTimeout(() => reject(new Error(`Quote timeout for ${symbol}`)), 4500);
-    });
-
-    return Promise.race([
-      getLiveMarketQuote(symbol),
-      timeoutPromise,
-    ]);
-  };
-
   const refreshAll = async () => {
     setRefreshingId('all');
     try {
-      const settled = await Promise.allSettled(stocks.map(async (stock) => {
-        const quote = await fetchQuoteWithTimeout(stock.symbol);
-        return {
-          id: stock.id,
-          price: Number(quote?.price || 0),
-        };
-      }));
-
-      const updates = new Map(
-        settled
-          .filter((entry) => entry.status === 'fulfilled' && Number.isFinite(entry.value.price) && entry.value.price > 0)
-          .map((entry) => [entry.value.id, entry.value.price]),
+      const { results, failures } = await getLiveMarketQuotes(
+        stocks.map((stock) => stock.symbol),
+        { concurrency: 5, timeoutMs: 4000 },
       );
+
+      const updates = new Map();
+      stocks.forEach((stock) => {
+        const quote = results.get(String(stock.symbol || '').toUpperCase());
+        if (quote?.price) updates.set(stock.id, Number(quote.price));
+      });
 
       if (updates.size > 0) {
         const nextStocks = stocks.map((stock) => (
@@ -100,10 +86,9 @@ export default function Portfolio() {
 
       await queryClient.invalidateQueries({ queryKey: ['stocks'] });
 
-      const failed = settled.filter((entry) => entry.status === 'rejected').length;
       if (updates.size === 0) toast.error('Live price fetch failed for all holdings.');
-      else if (failed === 0) toast.success('Live market prices fetched for all holdings.');
-      else toast.success(`Live prices updated for ${updates.size} holdings with ${failed} fallback${failed === 1 ? '' : 's'}.`);
+      else if (failures.length === 0) toast.success('Live market prices fetched for all holdings.');
+      else toast.success(`Live prices updated for ${updates.size} holdings with ${failures.length} fallback${failures.length === 1 ? '' : 's'}.`);
     } finally {
       setRefreshingId(null);
     }
@@ -112,21 +97,11 @@ export default function Portfolio() {
   const refreshOne = async (stock) => {
     setRefreshingId(stock.id);
     try {
-      const quote = await fetchQuoteWithTimeout(stock.symbol);
+      const quote = await getLiveMarketQuote(stock.symbol, { timeoutMs: 4000 });
       await base44.entities.Stock.update(stock.id, { current_price: quote.price || stock.current_price });
       toast.success(`${stock.symbol} live price updated.`);
     } catch {
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `What is the current stock price of ${stock.symbol} (${stock.name}) listed on NSE/BSE in Indian Rupees (INR)? Return only the price as a number in INR.`,
-        response_json_schema: {
-          type: 'object',
-          properties: {
-            price: { type: 'number' },
-          },
-        },
-      });
-      await base44.entities.Stock.update(stock.id, { current_price: result.price || stock.current_price });
-      toast.success(`${stock.symbol} refreshed with local market model.`);
+      toast.error(`${stock.symbol} live quote was unavailable.`);
     }
     await queryClient.invalidateQueries({ queryKey: ['stocks'] });
     setRefreshingId(null);

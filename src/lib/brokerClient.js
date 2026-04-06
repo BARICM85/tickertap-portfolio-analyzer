@@ -9,13 +9,21 @@ export function getBrokerApiBase() {
 }
 
 async function request(path, options = {}) {
+  const { timeoutMs = 4500, ...fetchOptions } = options;
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller
+    ? window.setTimeout(() => controller.abort(), timeoutMs)
+    : null;
+
   const response = await fetch(`${getBrokerApiBase()}${path}`, {
     headers: {
       'Content-Type': 'application/json',
-      ...(options.headers || {}),
+      ...(fetchOptions.headers || {}),
     },
-    ...options,
+    ...fetchOptions,
+    signal: controller?.signal,
   });
+  if (timeoutId) window.clearTimeout(timeoutId);
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -44,12 +52,35 @@ export function disconnectZerodha() {
   return request('/api/zerodha/disconnect', { method: 'POST' });
 }
 
-export function getLiveMarketQuote(symbol) {
-  return request(`/api/market/quote?symbol=${encodeURIComponent(symbol)}`);
+export function getLiveMarketQuote(symbol, options = {}) {
+  return request(`/api/market/quote?symbol=${encodeURIComponent(symbol)}`, options);
 }
 
 export function getLiveMarketHistory(symbol, range = 'ytd', interval = '1d') {
   return request(`/api/market/history?symbol=${encodeURIComponent(symbol)}&range=${encodeURIComponent(range)}&interval=${encodeURIComponent(interval)}`);
+}
+
+export async function getLiveMarketQuotes(symbols = [], options = {}) {
+  const uniqueSymbols = [...new Set(symbols.map((symbol) => String(symbol || '').trim().toUpperCase()).filter(Boolean))];
+  const concurrency = Math.max(1, Math.min(options.concurrency || 6, 10));
+  const results = new Map();
+  const failures = [];
+
+  for (let index = 0; index < uniqueSymbols.length; index += concurrency) {
+    const batch = uniqueSymbols.slice(index, index + concurrency);
+    const settled = await Promise.allSettled(batch.map((symbol) => getLiveMarketQuote(symbol, options)));
+
+    settled.forEach((entry, batchIndex) => {
+      const symbol = batch[batchIndex];
+      if (entry.status === 'fulfilled' && Number.isFinite(Number(entry.value?.price)) && Number(entry.value.price) > 0) {
+        results.set(symbol, entry.value);
+      } else {
+        failures.push(symbol);
+      }
+    });
+  }
+
+  return { results, failures };
 }
 
 export function mapZerodhaHoldingToPortfolio(holding) {
