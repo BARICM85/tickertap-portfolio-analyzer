@@ -111,6 +111,28 @@ npm run android:build
 - `android:open` opens the native Android project in Android Studio
 - `android:build` creates a debug APK using the bundled web app
 
+### Android release signing later
+
+This project is prepared for a future signed release build.
+
+1. Create your release keystore:
+
+```bash
+keytool -genkeypair -v -keystore tickertap-release.keystore -alias tickertap -keyalg RSA -keysize 2048 -validity 10000
+```
+
+2. Put the keystore somewhere safe outside Git, or inside `android/app` locally only.
+
+3. Copy:
+
+```bash
+copy android\keystore.properties.example android\keystore.properties
+```
+
+4. Fill in your real values in `android/keystore.properties`
+
+5. The Android Gradle config will automatically use release signing when `android/keystore.properties` exists.
+
 ## Notes
 
 - Sample holdings and watchlist items are seeded automatically on first load
