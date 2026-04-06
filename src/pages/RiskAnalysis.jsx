@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, ArrowRight, Shield } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { buildRiskNarrative, derivePortfolioAnalytics, formatCurrency } from '@/lib/portfolioAnalytics';
+import { buildPortfolioAdvancedMetrics } from '@/lib/advancedAnalytics';
 
 export default function RiskAnalysis() {
   const { data: stocks = [] } = useQuery({
@@ -14,6 +15,7 @@ export default function RiskAnalysis() {
     () => derivePortfolioAnalytics(stocks, { includeTimeline: false, includeScenarios: false }),
     [stocks],
   );
+  const advancedMetrics = useMemo(() => buildPortfolioAdvancedMetrics(analytics), [analytics]);
   const narrative = useMemo(() => buildRiskNarrative(analytics), [analytics]);
   const report = useMemo(() => ({
     risk_score: analytics.totals.riskScore,
@@ -57,6 +59,37 @@ export default function RiskAnalysis() {
           { label: 'Risk Score', value: `${report.risk_score}/100`, note: report.risk_score >= 65 ? 'Higher risk posture' : 'Contained risk posture' },
           { label: 'Diversification', value: `${report.diversification_score}/100`, note: 'Higher is healthier' },
           { label: 'Portfolio Beta', value: report.portfolio_beta.toFixed(2), note: 'Volatility vs benchmark' },
+        ].map((card) => (
+          <div key={card.label} className="rounded-[28px] border border-white/10 bg-[#0b1624]/90 p-5">
+            <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{card.label}</p>
+            <p className="mt-3 text-3xl font-semibold text-white">{card.value}</p>
+            <p className="mt-2 text-sm text-slate-400">{card.note}</p>
+          </div>
+        ))}
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {[
+          {
+            label: 'Absolute Return',
+            value: `${advancedMetrics.absoluteReturnPercent >= 0 ? '+' : ''}${advancedMetrics.absoluteReturnPercent.toFixed(1)}%`,
+            note: 'Total portfolio performance',
+          },
+          {
+            label: 'CAGR',
+            value: Number.isFinite(advancedMetrics.cagrPercent) ? `${advancedMetrics.cagrPercent >= 0 ? '+' : ''}${advancedMetrics.cagrPercent.toFixed(1)}%` : 'Unavailable',
+            note: 'Annualized since first purchase',
+          },
+          {
+            label: 'XIRR',
+            value: Number.isFinite(advancedMetrics.xirrPercent) ? `${advancedMetrics.xirrPercent >= 0 ? '+' : ''}${advancedMetrics.xirrPercent.toFixed(1)}%` : 'Unavailable',
+            note: 'Cashflow-aware annualized return',
+          },
+          {
+            label: 'Treynor Ratio',
+            value: Number.isFinite(advancedMetrics.treynorRatio) ? advancedMetrics.treynorRatio.toFixed(2) : 'Unavailable',
+            note: 'Return earned per unit of market risk',
+          },
         ].map((card) => (
           <div key={card.label} className="rounded-[28px] border border-white/10 bg-[#0b1624]/90 p-5">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{card.label}</p>

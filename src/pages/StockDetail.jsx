@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, BarChart3, Building2, Calendar, CircleDollarSign, Layers3, RefreshCw, Sparkles, TrendingDown, TrendingUp } from 'lucide-react';
+import { ArrowLeft, BarChart3, Building2, Calendar, CircleDollarSign, Layers3, RefreshCw, ShieldAlert, Sparkles, TrendingDown, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { base44 } from '@/api/base44Client';
 import { derivePortfolioAnalytics, formatCurrency, formatPercent } from '@/lib/portfolioAnalytics';
+import { buildStockAdvancedMetrics, getSuggestedHistoryRange } from '@/lib/advancedAnalytics';
+import { getLiveMarketHistory } from '@/lib/brokerClient';
 
 const LIGHTWEIGHT_STUDY_APP_URL = 'https://lightweight-study-app.vercel.app';
 
@@ -16,6 +18,34 @@ function Metric({ label, value, note }) {
       <p className="mt-3 text-xl font-semibold text-white">{value}</p>
       {note ? <p className="mt-2 text-sm text-slate-400">{note}</p> : null}
     </div>
+  );
+}
+
+function formatMaybePercent(value, digits = 1) {
+  return Number.isFinite(value) ? `${value >= 0 ? '+' : ''}${value.toFixed(digits)}%` : 'Unavailable';
+}
+
+function formatMaybeRatio(value, digits = 2) {
+  return Number.isFinite(value) ? value.toFixed(digits) : 'Unavailable';
+}
+
+function formatMaybeCurrency(value) {
+  return Number.isFinite(value) ? formatCurrency(value) : 'Unavailable';
+}
+
+function SectionMetricGrid({ title, metrics }) {
+  const visibleMetrics = metrics.filter((metric) => metric && metric.value !== undefined && metric.value !== null);
+  if (!visibleMetrics.length) return null;
+
+  return (
+    <section className="rounded-[32px] border border-white/10 bg-[#0b1624]/90 p-6">
+      <h2 className="text-xl font-semibold text-white">{title}</h2>
+      <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {visibleMetrics.map((metric) => (
+          <Metric key={metric.label} label={metric.label} value={metric.value} note={metric.note} />
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -35,6 +65,21 @@ export default function StockDetail() {
 
   const analytics = derivePortfolioAnalytics(stocks);
   const stock = analytics.holdings.find((item) => item.id === stockId);
+  const historyRange = stock ? getSuggestedHistoryRange(stock.buy_date || stock.purchase_history?.[0]?.buy_date) : '1y';
+
+  const { data: stockHistory } = useQuery({
+    queryKey: ['stock-history', stock?.symbol, historyRange],
+    queryFn: () => getLiveMarketHistory(stock.symbol, historyRange, '1d'),
+    enabled: Boolean(stock?.symbol),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: benchmarkHistory } = useQuery({
+    queryKey: ['stock-benchmark-history', historyRange],
+    queryFn: () => getLiveMarketHistory('^NSEI', historyRange, '1d'),
+    enabled: Boolean(stock?.symbol),
+    staleTime: 5 * 60 * 1000,
+  });
 
   const refresh = async () => {
     if (!stock) return;
@@ -94,6 +139,59 @@ export default function StockDetail() {
   }
 
   const positive = stock.pnl >= 0;
+  const advancedMetrics = buildStockAdvancedMetrics(stock, stockHistory, benchmarkHistory);
+  const performanceMetrics = [
+    { label: 'Absolute Return', value: formatMaybePercent(advancedMetrics.performance.absoluteReturnPercent), note: 'Gain/loss from your cost basis' },
+    { label: 'CAGR', value: formatMaybePercent(advancedMetrics.performance.cagrPercent), note: 'Annualized return since first buy' },
+    { label: 'XIRR', value: formatMaybePercent(advancedMetrics.performance.xirrPercent), note: 'Accounts for multiple buy dates' },
+    { label: 'Nifty 50 Return', value: formatMaybePercent(advancedMetrics.performance.benchmarkReturnPercent), note: `Benchmark over ${historyRange.toUpperCase()}` },
+    { label: 'Price vs Nifty', value: formatMaybePercent(advancedMetrics.performance.priceVsBenchmarkPercent), note: 'Outperformance versus benchmark' },
+    { label: 'Alpha', value: formatMaybePercent(advancedMetrics.performance.alphaPercent), note: 'Excess return after market sensitivity' },
+  ];
+  const riskMetrics = [
+    { label: 'Volatility', value: formatMaybePercent(advancedMetrics.risk.volatilityPercent), note: 'Annualized standard deviation' },
+    { label: 'Beta', value: formatMaybeRatio(advancedMetrics.risk.beta), note: 'Sensitivity versus Nifty 50' },
+    { label: 'Max Drawdown', value: formatMaybePercent(-Math.abs(advancedMetrics.risk.maxDrawdownPercent || 0)), note: 'Worst peak-to-trough decline' },
+    { label: 'Downside Risk', value: formatMaybePercent(advancedMetrics.risk.downsideRiskPercent), note: 'Volatility of negative returns only' },
+  ];
+  const riskAdjustedMetrics = [
+    { label: 'Sharpe Ratio', value: formatMaybeRatio(advancedMetrics.riskAdjusted.sharpeRatio), note: 'Return per unit of total risk' },
+    { label: 'Sortino Ratio', value: formatMaybeRatio(advancedMetrics.riskAdjusted.sortinoRatio), note: 'Return per unit of downside risk' },
+    { label: 'Treynor Ratio', value: formatMaybeRatio(advancedMetrics.riskAdjusted.treynorRatio), note: 'Return per unit of beta' },
+  ];
+  const valuationMetrics = [
+    { label: 'PE Ratio', value: formatMaybeRatio(advancedMetrics.valuation.peRatio, 1), note: advancedMetrics.valuation.marketCap ? `Market cap ${advancedMetrics.valuation.marketCap}` : 'Valuation multiple from live profile' },
+    { label: 'Dividend Yield', value: formatMaybePercent(advancedMetrics.valuation.dividendYield), note: 'Income yield snapshot' },
+  ];
+  const technicalMetrics = [
+    { label: 'Trend', value: advancedMetrics.technicals.trend, note: 'Based on price vs 50DMA and 200DMA' },
+    { label: 'Support', value: formatMaybeCurrency(advancedMetrics.technicals.support), note: 'Recent 60-session low zone' },
+    { label: 'Resistance', value: formatMaybeCurrency(advancedMetrics.technicals.resistance), note: 'Recent 60-session high zone' },
+    { label: '50DMA', value: formatMaybeCurrency(advancedMetrics.technicals.movingAverage50), note: '50-day moving average' },
+    { label: '200DMA', value: formatMaybeCurrency(advancedMetrics.technicals.movingAverage200), note: '200-day moving average' },
+    {
+      label: 'RSI (14)',
+      value: formatMaybeRatio(advancedMetrics.technicals.rsi14),
+      note: Number.isFinite(advancedMetrics.technicals.rsi14)
+        ? advancedMetrics.technicals.rsi14 >= 70
+          ? 'Overbought zone'
+          : advancedMetrics.technicals.rsi14 <= 30
+            ? 'Oversold zone'
+            : 'Neutral momentum'
+        : 'Needs more history',
+    },
+    {
+      label: 'Volume Strength',
+      value: advancedMetrics.technicals.volumeStrength.label,
+      note: Number.isFinite(advancedMetrics.technicals.volumeStrength.ratio)
+        ? `${advancedMetrics.technicals.volumeStrength.ratio.toFixed(2)}x 20-day average volume`
+        : 'Needs more volume history',
+    },
+  ];
+  const stockRiskMetrics = [
+    { label: 'Sector Risk', value: advancedMetrics.stockSpecificRisk.sectorRisk, note: `${advancedMetrics.stockSpecificRisk.sector} sector profile` },
+    { label: 'Portfolio Weight', value: formatMaybePercent(advancedMetrics.stockSpecificRisk.portfolioWeight), note: 'Position size inside your portfolio' },
+  ];
 
   return (
     <div className="space-y-6">
@@ -152,6 +250,13 @@ export default function StockDetail() {
         <Metric label="Position P&L" value={`${positive ? '+' : '-'}${formatCurrency(Math.abs(stock.pnl))}`} note={formatPercent(stock.pnlPercent)} />
       </section>
 
+      <SectionMetricGrid title="Stock Performance Metrics" metrics={performanceMetrics} />
+      <SectionMetricGrid title="Stock Risk Metrics" metrics={riskMetrics} />
+      <SectionMetricGrid title="Risk-Adjusted Metrics" metrics={riskAdjustedMetrics} />
+      <SectionMetricGrid title="Valuation Snapshot" metrics={valuationMetrics} />
+      <SectionMetricGrid title="Price Action & Technicals" metrics={technicalMetrics} />
+      <SectionMetricGrid title="Stock-Specific Risks" metrics={stockRiskMetrics} />
+
       <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <section className="rounded-[32px] border border-white/10 bg-[#0b1624]/90 p-6">
           <h2 className="text-xl font-semibold text-white">Decision Dashboard</h2>
@@ -194,6 +299,7 @@ export default function StockDetail() {
               { icon: Calendar, title: 'Holding horizon', text: stock.buy_date ? `Tracking since ${stock.buy_date}. Keep the thesis anchored to your intended time frame.` : 'Add a buy date to compare holding duration with your strategy.' },
               { icon: CircleDollarSign, title: 'Income profile', text: `Annualized dividend estimate is ${formatCurrency(stock.monthlyIncome * 12)} at the current value.` },
               { icon: positive ? TrendingUp : TrendingDown, title: 'Momentum vs cost basis', text: `${stock.symbol} is ${positive ? 'above' : 'below'} cost basis by ${formatPercent(stock.pnlPercent)}.` },
+              { icon: ShieldAlert, title: 'Benchmark context', text: Number.isFinite(advancedMetrics.performance.priceVsBenchmarkPercent) ? `${stock.symbol} is ${advancedMetrics.performance.priceVsBenchmarkPercent >= 0 ? 'ahead of' : 'behind'} Nifty 50 by ${Math.abs(advancedMetrics.performance.priceVsBenchmarkPercent).toFixed(1)}% over the loaded history.` : 'Benchmark comparison will appear once daily history is available.' },
             ].map((item) => (
               <div key={item.title} className="rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
                 <item.icon className="h-4 w-4 text-amber-300" />

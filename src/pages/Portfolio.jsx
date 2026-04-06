@@ -11,6 +11,7 @@ import AddStockDialog from '@/components/portfolio/AddStockDialog';
 import ImportDialog from '@/components/portfolio/ImportDialog';
 import StockTable from '@/components/portfolio/StockTable';
 import { derivePortfolioAnalytics, formatCompactCurrency, formatCurrency, formatPercent } from '@/lib/portfolioAnalytics';
+import { buildPortfolioAdvancedMetrics } from '@/lib/advancedAnalytics';
 import { getLiveMarketQuote, getLiveMarketQuotes } from '@/lib/brokerClient';
 
 function exportPortfolio(rows) {
@@ -42,6 +43,7 @@ export default function Portfolio() {
     () => derivePortfolioAnalytics(stocks, { includeTimeline: false, includeScenarios: false }),
     [stocks],
   );
+  const advancedMetrics = useMemo(() => buildPortfolioAdvancedMetrics(analytics), [analytics]);
 
   useEffect(() => {
     const broker = searchParams.get('broker');
@@ -174,6 +176,47 @@ export default function Portfolio() {
           { label: 'Current Value', value: formatCurrency(analytics.totals.totalValue), note: formatPercent(analytics.totals.totalPnLPercent) },
           { label: 'Net Gain / Loss', value: `${analytics.totals.totalPnL >= 0 ? '+' : '-'}${formatCompactCurrency(Math.abs(analytics.totals.totalPnL))}`, note: 'Absolute portfolio move' },
           { label: 'Largest Holding', value: analytics.holdings[0] ? `${analytics.holdings[0].symbol} ${analytics.holdings[0].allocation.toFixed(1)}%` : '--', note: 'Use this to monitor concentration' },
+        ].map((card) => (
+          <div key={card.label} className="rounded-[28px] border border-white/10 bg-[#0b1624]/90 p-5">
+            <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{card.label}</p>
+            <p className="mt-3 text-2xl font-semibold text-white">{card.value}</p>
+            <p className="mt-2 text-sm text-slate-400">{card.note}</p>
+          </div>
+        ))}
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {[
+          {
+            label: 'Absolute Return',
+            value: formatPercent(advancedMetrics.absoluteReturnPercent || 0),
+            note: 'Current portfolio gain from cost basis',
+          },
+          {
+            label: 'CAGR',
+            value: Number.isFinite(advancedMetrics.cagrPercent) ? formatPercent(advancedMetrics.cagrPercent) : 'Unavailable',
+            note: advancedMetrics.startDate ? 'Annualized since your earliest buy' : 'Add buy dates for annualized return',
+          },
+          {
+            label: 'XIRR',
+            value: Number.isFinite(advancedMetrics.xirrPercent) ? formatPercent(advancedMetrics.xirrPercent) : 'Unavailable',
+            note: 'Handles staggered purchases',
+          },
+          {
+            label: 'Weighted Beta',
+            value: advancedMetrics.weightedBeta.toFixed(2),
+            note: 'Portfolio sensitivity vs market',
+          },
+          {
+            label: 'Treynor Ratio',
+            value: Number.isFinite(advancedMetrics.treynorRatio) ? advancedMetrics.treynorRatio.toFixed(2) : 'Unavailable',
+            note: 'Return earned per unit of beta',
+          },
+          {
+            label: 'Sector Concentration',
+            value: advancedMetrics.topSectorWeight ? `${advancedMetrics.topSectorWeight.toFixed(1)}%` : '--',
+            note: 'Largest sector share of portfolio value',
+          },
         ].map((card) => (
           <div key={card.label} className="rounded-[28px] border border-white/10 bg-[#0b1624]/90 p-5">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{card.label}</p>
