@@ -8,6 +8,11 @@ const NATIVE_GOOGLE_SETUP_HINT = 'Android Google sign-in needs Firebase Android 
 
 let firebaseReadyPromise;
 
+function isAndroidUserAgent() {
+  if (typeof navigator === 'undefined') return false;
+  return /android/i.test(navigator.userAgent || '');
+}
+
 function getFirebaseConfig() {
   return {
     apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -24,6 +29,14 @@ export function isFirebaseConfigured() {
 
 export function isNativeFirebasePlatform() {
   return Capacitor.isNativePlatform();
+}
+
+export function isNativeFirebasePluginAvailable() {
+  try {
+    return Capacitor.isPluginAvailable('FirebaseAuthentication');
+  } catch {
+    return false;
+  }
 }
 
 function loadScript(src) {
@@ -114,6 +127,15 @@ function createGoogleSignInError(error) {
   const normalized = message.toLowerCase();
 
   if (
+    normalized.includes('not implemented on android') ||
+    normalized.includes('not implemented on web') ||
+    normalized.includes('plugin is not implemented') ||
+    normalized.includes('firebaseauthentication') && normalized.includes('not implemented')
+  ) {
+    return new Error('Native Firebase plugin unavailable in this build. Reinstall the Android app from the latest APK and open the installed app, not the browser page.');
+  }
+
+  if (
     normalized.includes('missing initial state') ||
     normalized.includes('sessionstorage') ||
     normalized.includes('storage-partitioned') ||
@@ -139,6 +161,10 @@ function createGoogleSignInError(error) {
 async function signInWithGoogleNative() {
   const { firebase, auth } = await loadFirebaseAuth();
 
+  if (!isNativeFirebasePluginAvailable()) {
+    throw new Error('Native Firebase plugin unavailable in this build. Reinstall the Android app from the latest APK and open the installed app, not the browser page.');
+  }
+
   try {
     const result = await FirebaseAuthentication.signInWithGoogle({
       skipNativeAuth: true,
@@ -161,6 +187,10 @@ async function signInWithGoogleNative() {
 }
 
 export async function signInWithGoogle() {
+  if (!isNativeFirebasePlatform() && isAndroidUserAgent()) {
+    throw new Error('Open the installed Android app to use Google sign-in. The mobile browser page does not support the native Firebase sign-in flow.');
+  }
+
   if (isNativeFirebasePlatform()) {
     return signInWithGoogleNative();
   }
