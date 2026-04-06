@@ -111,6 +111,28 @@ npm run android:build
 - `android:open` opens the native Android project in Android Studio
 - `android:build` creates a debug APK using the bundled web app
 
+### Android Google sign-in setup
+
+To make Google sign-in work inside the Android app, the Firebase Android app setup must also exist.
+
+1. In Firebase Console, add an Android app with package name:
+
+```text
+com.bariyaone.tickertap
+```
+
+2. Register your debug/release SHA fingerprints in Firebase Authentication for that Android app.
+
+3. Download `google-services.json` from Firebase.
+
+4. Place it here locally:
+
+```text
+android/app/google-services.json
+```
+
+Without that file, the Android app can build, but native Google sign-in will fail.
+
 ### Android release signing later
 
 This project is prepared for a future signed release build.

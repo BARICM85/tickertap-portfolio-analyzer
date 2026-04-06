@@ -1,12 +1,12 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { isFirebaseConfigured, loadFirebaseAuth, signInWithGooglePopup } from '@/lib/firebaseAuth';
-import { queryClientInstance } from '@/lib/query-client';
+import { isFirebaseConfigured, loadFirebaseAuth, signInWithGoogle, signOutFirebase } from '@/lib/firebaseAuth';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const [authError, setAuthError] = useState(null);
 
   useEffect(() => {
     let unsubscribe = () => {};
@@ -24,8 +24,8 @@ export function AuthProvider({ children }) {
         unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
           if (!firebaseUser) {
             setUser(null);
+            setAuthError(null);
             setIsLoadingAuth(false);
-            queryClientInstance.invalidateQueries();
             return;
           }
 
@@ -36,13 +36,14 @@ export function AuthProvider({ children }) {
             picture: firebaseUser.photoURL,
             provider: 'firebase-google',
           });
+          setAuthError(null);
           setIsLoadingAuth(false);
-          queryClientInstance.invalidateQueries();
         });
       })
-      .catch(() => {
+      .catch((error) => {
         if (!active) return;
         setUser(null);
+        setAuthError(error?.message || 'Unable to start Google authentication.');
         setIsLoadingAuth(false);
       });
 
@@ -52,20 +53,27 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  const signInWithGoogle = useCallback(async () => {
-    await signInWithGooglePopup();
+  const handleGoogleSignIn = useCallback(async () => {
+    setAuthError(null);
+    try {
+      await signInWithGoogle();
+    } catch (error) {
+      const message = error?.message || 'Google sign-in failed.';
+      setAuthError(message);
+      throw error;
+    }
   }, []);
 
   const logout = useCallback(async () => {
     if (!isFirebaseConfigured()) {
       setUser(null);
+      setAuthError(null);
       return;
     }
 
-    const { auth } = await loadFirebaseAuth();
-    await auth.signOut();
+    await signOutFirebase();
     setUser(null);
-    queryClientInstance.invalidateQueries();
+    setAuthError(null);
   }, []);
 
   const value = useMemo(() => ({
@@ -75,13 +83,13 @@ export function AuthProvider({ children }) {
     googleConfigured: isFirebaseConfigured(),
     isLoadingAuth,
     isLoadingPublicSettings: false,
-    authError: null,
+    authError,
     appPublicSettings: null,
     logout,
-    signInWithGoogle,
-    navigateToLogin: signInWithGoogle,
+    signInWithGoogle: handleGoogleSignIn,
+    navigateToLogin: handleGoogleSignIn,
     checkAppState: async () => {},
-  }), [isLoadingAuth, logout, signInWithGoogle, user]);
+  }), [authError, handleGoogleSignIn, isLoadingAuth, logout, user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

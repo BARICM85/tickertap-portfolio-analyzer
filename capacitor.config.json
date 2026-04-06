@@ -1,5 +1,11 @@
 {
   "appId": "com.bariyaone.tickertap",
   "appName": "TickerTap Clone",
-  "webDir": "dist"
+  "webDir": "dist",
+  "plugins": {
+    "FirebaseAuthentication": {
+      "skipNativeAuth": true,
+      "providers": ["google.com"]
+    }
+  }
 }
