@@ -1,10 +1,11 @@
-import React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { BarChart3, Briefcase, Eye, LogOut, Shield, TrendingUp, UserCircle2 } from 'lucide-react';
 import GoogleSignInButton from '@/components/auth/GoogleSignInButton';
 import { useAuth } from '@/lib/AuthContext';
 import { formatCurrency } from '@/lib/portfolioAnalytics';
+import { base44 } from '@/api/base44Client';
 
 const NAV_ITEMS = [
   { path: '/Dashboard', label: 'Dashboard', icon: BarChart3 },
@@ -33,6 +34,8 @@ function NavLink({ item, active, onClick }) {
 export default function AppLayout() {
   const location = useLocation();
   const { user, isAuthenticated, googleConfigured, logout } = useAuth();
+  const queryClient = useQueryClient();
+  const [syncStatus, setSyncStatus] = useState(() => base44.sync.getStatus());
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
   const { data: indexPayload } = useQuery({
     queryKey: ['header-indices'],
@@ -45,6 +48,38 @@ export default function AppLayout() {
   });
   const indexItems = indexPayload?.items || [];
   const hasDelayedIndices = indexItems.some((item) => item.delayed);
+
+  useEffect(() => base44.sync.subscribe(setSyncStatus), []);
+
+  useEffect(() => {
+    const handleSyncEvent = (event) => {
+      const keys = event.detail?.keys || [];
+      if (keys.includes('stocks')) {
+        queryClient.invalidateQueries({ queryKey: ['stocks'] });
+      }
+      if (keys.includes('watchlist')) {
+        queryClient.invalidateQueries({ queryKey: ['watchlist'] });
+      }
+    };
+
+    window.addEventListener('portfolio-data-sync', handleSyncEvent);
+    return () => window.removeEventListener('portfolio-data-sync', handleSyncEvent);
+  }, [queryClient]);
+
+  useEffect(() => {
+    void base44.sync.refreshStatus();
+    queryClient.invalidateQueries({ queryKey: ['stocks'] });
+    queryClient.invalidateQueries({ queryKey: ['watchlist'] });
+  }, [queryClient, user?.id]);
+
+  const syncBadgeClassName = syncStatus.mode === 'active'
+    ? 'border-emerald-400/20 bg-emerald-400/12 text-emerald-200'
+    : syncStatus.mode === 'syncing'
+      ? 'border-cyan-400/20 bg-cyan-400/12 text-cyan-200'
+      : syncStatus.mode === 'unavailable'
+        ? 'border-rose-400/20 bg-rose-400/12 text-rose-200'
+        : 'border-white/10 bg-white/[0.03] text-slate-300';
+
   const accountCard = isAuthenticated ? (
     <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2">
       {user?.picture ? (
@@ -95,12 +130,18 @@ export default function AppLayout() {
           </nav>
 
           <div className="hidden items-center gap-3 lg:flex">
+            <div className={`rounded-2xl border px-3 py-2 text-xs font-medium ${syncBadgeClassName}`}>
+              {syncStatus.label}
+            </div>
             {accountCard}
           </div>
         </div>
 
         <div className="border-t border-white/6 lg:hidden">
           <div className="mx-auto max-w-[1680px] px-4 py-2 lg:px-8">
+            <div className={`mb-2 inline-flex rounded-2xl border px-3 py-2 text-xs font-medium ${syncBadgeClassName}`}>
+              {syncStatus.label}
+            </div>
             {accountCard ? <div className="mb-2">{accountCard}</div> : null}
             <div className="flex gap-2 overflow-x-auto">
             {NAV_ITEMS.map((item) => (

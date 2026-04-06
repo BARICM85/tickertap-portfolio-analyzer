@@ -1,6 +1,7 @@
 import { createDemoWatchlist, getStockProfile } from '@/lib/marketData';
 import { buildRiskNarrative, derivePortfolioAnalytics } from '@/lib/portfolioAnalytics';
 import { namespacedKey } from '@/lib/appConfig';
+import { isFirebaseConfigured, loadFirebaseDataLayer } from '@/lib/firebaseAuth';
 
 const STORAGE_KEYS = {
   stocks: namespacedKey('portfolio_analyzer_stocks'),
@@ -8,9 +9,18 @@ const STORAGE_KEYS = {
   session: namespacedKey('portfolio_analyzer_session'),
   bootstrapped: namespacedKey('portfolio_analyzer_bootstrapped'),
 };
+const CLOUD_ENTITY_KEYS = {
+  [STORAGE_KEYS.stocks]: 'stocks',
+  [STORAGE_KEYS.watchlist]: 'watchlist',
+};
 
 const uploadedFiles = new Map();
 const isBrowser = typeof window !== 'undefined';
+const syncSubscribers = new Set();
+const syncState = {
+  mode: isFirebaseConfigured() ? 'local' : 'local',
+  label: 'Local only',
+};
 
 function getNowIso() {
   return new Date().toISOString();
@@ -19,6 +29,27 @@ function getNowIso() {
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
   return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function cloneSyncState() {
+  return { ...syncState };
+}
+
+function setSyncState(nextState) {
+  Object.assign(syncState, nextState);
+  const payload = cloneSyncState();
+  syncSubscribers.forEach((callback) => callback(payload));
+}
+
+function subscribeSyncState(callback) {
+  syncSubscribers.add(callback);
+  callback(cloneSyncState());
+  return () => syncSubscribers.delete(callback);
+}
+
+function notifyEntitySync(keys = []) {
+  if (!isBrowser) return;
+  window.dispatchEvent(new CustomEvent('portfolio-data-sync', { detail: { keys } }));
 }
 
 function readCollection(key) {
@@ -39,8 +70,152 @@ function writeCollection(key, rows) {
   window.localStorage.setItem(key, JSON.stringify(rows));
 }
 
+function getEntityKey(storageKey) {
+  return CLOUD_ENTITY_KEYS[storageKey] || storageKey;
+}
+
+function getRowIdentity(row = {}) {
+  return String(row.symbol || row.id || '').trim().toUpperCase();
+}
+
+function getRowTimestamp(row = {}) {
+  const value = row.updated_date || row.created_date;
+  const parsed = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeRowsForCompare(rows = []) {
+  return [...rows]
+    .map((row) => ({ ...row }))
+    .sort((left, right) => {
+      const leftKey = getRowIdentity(left);
+      const rightKey = getRowIdentity(right);
+      return leftKey.localeCompare(rightKey);
+    });
+}
+
+function rowsMatch(left = [], right = []) {
+  return JSON.stringify(normalizeRowsForCompare(left)) === JSON.stringify(normalizeRowsForCompare(right));
+}
+
+function mergeEntityRows(localRows = [], remoteRows = []) {
+  const merged = new Map();
+
+  [...remoteRows, ...localRows].forEach((row) => {
+    const key = getRowIdentity(row);
+    if (!key) return;
+    const current = merged.get(key);
+    if (!current || getRowTimestamp(row) >= getRowTimestamp(current)) {
+      merged.set(key, row);
+    }
+  });
+
+  return [...merged.values()];
+}
+
+async function getCloudContext() {
+  if (!isBrowser || !isFirebaseConfigured()) {
+    setSyncState({ mode: 'local', label: 'Local only' });
+    return null;
+  }
+
+  try {
+    const context = await loadFirebaseDataLayer();
+    const user = context.auth.currentUser;
+    if (!user) {
+      setSyncState({ mode: 'local', label: 'Local only' });
+      return null;
+    }
+
+    return { ...context, user };
+  } catch {
+    setSyncState({ mode: 'unavailable', label: 'Cloud sync unavailable' });
+    return null;
+  }
+}
+
+async function readCloudRows(context, storageKey) {
+  const doc = await context.db
+    .collection('portfolioAnalyzerUsers')
+    .doc(context.user.uid)
+    .collection('entities')
+    .doc(getEntityKey(storageKey))
+    .get();
+
+  const rows = doc.data()?.rows;
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function writeCloudRows(context, storageKey, rows) {
+  await context.db
+    .collection('portfolioAnalyzerUsers')
+    .doc(context.user.uid)
+    .collection('entities')
+    .doc(getEntityKey(storageKey))
+    .set({
+      rows,
+      count: rows.length,
+      updatedAt: getNowIso(),
+    }, { merge: true });
+}
+
+async function syncCollectionInBackground(storageKey, localRows, existingContext = null) {
+  const context = existingContext || await getCloudContext();
+  if (!context) return;
+
+  setSyncState({ mode: 'syncing', label: 'Syncing to cloud...' });
+
+  try {
+    const remoteRows = await readCloudRows(context, storageKey);
+
+    if (!remoteRows.length) {
+      if (localRows.length) {
+        await writeCloudRows(context, storageKey, localRows);
+      }
+      setSyncState({ mode: 'active', label: 'Cloud sync active' });
+      return;
+    }
+
+    const mergedRows = mergeEntityRows(localRows, remoteRows);
+    if (!rowsMatch(localRows, mergedRows)) {
+      writeCollection(storageKey, mergedRows);
+      notifyEntitySync([getEntityKey(storageKey)]);
+    }
+
+    if (!rowsMatch(remoteRows, mergedRows)) {
+      await writeCloudRows(context, storageKey, mergedRows);
+    }
+
+    setSyncState({ mode: 'active', label: 'Cloud sync active' });
+  } catch {
+    setSyncState({ mode: 'unavailable', label: 'Cloud sync unavailable' });
+  }
+}
+
 async function readEntityRows(storageKey) {
-  return readCollection(storageKey);
+  const localRows = readCollection(storageKey);
+  const context = await getCloudContext();
+  if (!context) return localRows;
+
+  if (!localRows.length) {
+    setSyncState({ mode: 'syncing', label: 'Syncing to cloud...' });
+    try {
+      const remoteRows = await readCloudRows(context, storageKey);
+      if (remoteRows.length) {
+        writeCollection(storageKey, remoteRows);
+        setSyncState({ mode: 'active', label: 'Cloud sync active' });
+        return remoteRows;
+      }
+      setSyncState({ mode: 'active', label: 'Cloud sync active' });
+      return localRows;
+    } catch {
+      setSyncState({ mode: 'unavailable', label: 'Cloud sync unavailable' });
+      return localRows;
+    }
+  }
+
+  void syncCollectionInBackground(storageKey, localRows, context);
+  return localRows;
 }
 
 async function writeEntityRows(storageKey, rows) {
@@ -48,8 +223,10 @@ async function writeEntityRows(storageKey, rows) {
     ...row,
     id: row.id || createId(),
     created_date: row.created_date || getNowIso(),
+    updated_date: row.updated_date || getNowIso(),
   }));
   writeCollection(storageKey, normalizedRows);
+  void syncCollectionInBackground(storageKey, normalizedRows);
   return normalizedRows;
 }
 
@@ -67,11 +244,12 @@ function parseSymbolsFromPrompt(prompt = '') {
 function ensureSeeded() {
   if (!isBrowser) return;
   if (window.localStorage.getItem(STORAGE_KEYS.bootstrapped)) return;
-  if (readCollection(STORAGE_KEYS.watchlist).length === 0) {
+  if (!isFirebaseConfigured() && readCollection(STORAGE_KEYS.watchlist).length === 0) {
     const seededWatchlist = createDemoWatchlist().map((row) => ({
       ...row,
       id: createId(),
       created_date: getNowIso(),
+      updated_date: getNowIso(),
     }));
     writeCollection(STORAGE_KEYS.watchlist, seededWatchlist);
   }
@@ -248,20 +426,23 @@ function createEntityApi(storageKey) {
       ensureSeeded();
       const items = await readEntityRows(storageKey);
       const created = { ...payload, id: createId(), created_date: getNowIso() };
-      await writeEntityRows(storageKey, [...items, created]);
+      await writeEntityRows(storageKey, [...items, { ...created, updated_date: created.created_date }]);
       return created;
     },
     async bulkCreate(payloads = []) {
       ensureSeeded();
       const items = await readEntityRows(storageKey);
-      const created = payloads.map((payload) => ({ ...payload, id: createId(), created_date: getNowIso() }));
+      const created = payloads.map((payload) => {
+        const now = getNowIso();
+        return { ...payload, id: createId(), created_date: now, updated_date: now };
+      });
       await writeEntityRows(storageKey, [...items, ...created]);
       return created;
     },
     async update(id, updates) {
       ensureSeeded();
       const items = await readEntityRows(storageKey);
-      const next = items.map((item) => (item.id === id ? { ...item, ...updates } : item));
+      const next = items.map((item) => (item.id === id ? { ...item, ...updates, updated_date: getNowIso() } : item));
       await writeEntityRows(storageKey, next);
       return next.find((item) => item.id === id) || null;
     },
@@ -363,6 +544,18 @@ export const base44 = {
           details: 'Unsupported file type. Please upload a CSV or JSON file.',
         };
       },
+    },
+  },
+  sync: {
+    getStatus() {
+      return cloneSyncState();
+    },
+    subscribe(callback) {
+      return subscribeSyncState(callback);
+    },
+    async refreshStatus() {
+      await getCloudContext();
+      return cloneSyncState();
     },
   },
 };

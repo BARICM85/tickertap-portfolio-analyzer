@@ -1,5 +1,6 @@
 const FIREBASE_APP_SCRIPT = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js';
 const FIREBASE_AUTH_SCRIPT = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js';
+const FIREBASE_FIRESTORE_SCRIPT = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js';
 
 let firebaseReadyPromise;
 
@@ -66,6 +67,25 @@ export async function loadFirebaseAuth() {
   }
 
   return firebaseReadyPromise;
+}
+
+export async function loadFirebaseDataLayer() {
+  if (!isFirebaseConfigured()) {
+    throw new Error('Firebase environment variables are missing.');
+  }
+
+  const { firebase, auth } = await loadFirebaseAuth();
+  await loadScript(FIREBASE_FIRESTORE_SCRIPT);
+
+  if (!firebase.firestore) {
+    throw new Error('Firebase Firestore SDK did not load.');
+  }
+
+  return {
+    firebase,
+    auth,
+    db: firebase.firestore(),
+  };
 }
 
 export async function signInWithGooglePopup() {
