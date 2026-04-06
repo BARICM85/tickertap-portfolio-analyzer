@@ -95,6 +95,22 @@ For hosting:
 - Whitelist `http://localhost:8000/api/zerodha/callback` as the redirect URL in your Kite Connect app
 - Keep the backend running before clicking Connect Zerodha in the app
 
+## Android app
+
+This project now includes a Capacitor Android wrapper in [android](./android).
+
+Useful commands:
+
+```bash
+npm run android:sync
+npm run android:open
+npm run android:build
+```
+
+- `android:sync` builds the web app and copies the latest web assets into the Android project
+- `android:open` opens the native Android project in Android Studio
+- `android:build` creates a debug APK using the bundled web app
+
 ## Notes
 
 - Sample holdings and watchlist items are seeded automatically on first load
