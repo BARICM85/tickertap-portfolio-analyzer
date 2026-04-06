@@ -33,6 +33,10 @@ function formatMaybeCurrency(value) {
   return Number.isFinite(value) ? formatCurrency(value) : 'Unavailable';
 }
 
+function unavailableNote(sourceLabel) {
+  return `${sourceLabel} feed not connected yet`;
+}
+
 function SectionMetricGrid({ title, metrics }) {
   const visibleMetrics = metrics.filter((metric) => metric && metric.value !== undefined && metric.value !== null);
   if (!visibleMetrics.length) return null;
@@ -161,7 +165,19 @@ export default function StockDetail() {
   ];
   const valuationMetrics = [
     { label: 'PE Ratio', value: formatMaybeRatio(advancedMetrics.valuation.peRatio, 1), note: advancedMetrics.valuation.marketCap ? `Market cap ${advancedMetrics.valuation.marketCap}` : 'Valuation multiple from live profile' },
+    { label: 'PEG Ratio', value: formatMaybeRatio(advancedMetrics.valuation.pegRatio, 2), note: unavailableNote('Growth-adjusted valuation') },
+    { label: 'PB Ratio', value: formatMaybeRatio(advancedMetrics.valuation.pbRatio, 2), note: unavailableNote('Book value') },
+    { label: 'EV / EBITDA', value: formatMaybeRatio(advancedMetrics.valuation.evToEbitda, 2), note: unavailableNote('Enterprise value') },
     { label: 'Dividend Yield', value: formatMaybePercent(advancedMetrics.valuation.dividendYield), note: 'Income yield snapshot' },
+  ];
+  const qualityMetrics = [
+    { label: 'Earnings Growth YoY', value: formatMaybePercent(advancedMetrics.quality.earningsGrowthYoYPercent), note: unavailableNote('Earnings statement') },
+    { label: 'Earnings Growth QoQ', value: formatMaybePercent(advancedMetrics.quality.earningsGrowthQoQPercent), note: unavailableNote('Quarterly earnings') },
+    { label: 'Revenue Growth', value: formatMaybePercent(advancedMetrics.quality.revenueGrowthPercent), note: unavailableNote('Revenue statement') },
+    { label: 'ROE', value: formatMaybePercent(advancedMetrics.quality.roePercent), note: unavailableNote('Balance sheet') },
+    { label: 'ROCE', value: formatMaybePercent(advancedMetrics.quality.rocePercent), note: unavailableNote('Capital efficiency') },
+    { label: 'Debt / Equity', value: formatMaybeRatio(advancedMetrics.quality.debtToEquity, 2), note: unavailableNote('Leverage') },
+    { label: 'Free Cash Flow', value: formatMaybeCurrency(advancedMetrics.quality.freeCashFlow), note: unavailableNote('Cash flow statement') },
   ];
   const technicalMetrics = [
     { label: 'Trend', value: advancedMetrics.technicals.trend, note: 'Based on price vs 50DMA and 200DMA' },
@@ -191,6 +207,11 @@ export default function StockDetail() {
   const stockRiskMetrics = [
     { label: 'Sector Risk', value: advancedMetrics.stockSpecificRisk.sectorRisk, note: `${advancedMetrics.stockSpecificRisk.sector} sector profile` },
     { label: 'Portfolio Weight', value: formatMaybePercent(advancedMetrics.stockSpecificRisk.portfolioWeight), note: 'Position size inside your portfolio' },
+    { label: 'Management Quality', value: advancedMetrics.stockSpecificRisk.managementQuality || 'Unavailable', note: unavailableNote('Governance research') },
+    { label: 'Promoter Holding', value: formatMaybePercent(advancedMetrics.stockSpecificRisk.promoterHoldingPercent), note: unavailableNote('Shareholding pattern') },
+    { label: 'Promoter Pledge', value: formatMaybePercent(advancedMetrics.stockSpecificRisk.promoterPledgePercent), note: unavailableNote('Pledge disclosure') },
+    { label: 'News Risk', value: advancedMetrics.stockSpecificRisk.latestNewsRisk || 'Unavailable', note: unavailableNote('News / events') },
+    { label: 'Corporate Actions', value: advancedMetrics.stockSpecificRisk.corporateActions || 'Unavailable', note: unavailableNote('Corporate action feed') },
   ];
 
   return (
@@ -253,6 +274,7 @@ export default function StockDetail() {
       <SectionMetricGrid title="Stock Performance Metrics" metrics={performanceMetrics} />
       <SectionMetricGrid title="Stock Risk Metrics" metrics={riskMetrics} />
       <SectionMetricGrid title="Risk-Adjusted Metrics" metrics={riskAdjustedMetrics} />
+      <SectionMetricGrid title="Stock Quality Analysis" metrics={qualityMetrics} />
       <SectionMetricGrid title="Valuation Snapshot" metrics={valuationMetrics} />
       <SectionMetricGrid title="Price Action & Technicals" metrics={technicalMetrics} />
       <SectionMetricGrid title="Stock-Specific Risks" metrics={stockRiskMetrics} />
