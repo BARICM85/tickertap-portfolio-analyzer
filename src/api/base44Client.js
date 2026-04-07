@@ -159,7 +159,8 @@ async function writeCloudRows(context, storageKey, rows) {
     }, { merge: true });
 }
 
-async function syncCollectionInBackground(storageKey, localRows, existingContext = null) {
+async function syncCollectionInBackground(storageKey, localRows, existingContext = null, options = {}) {
+  const { overwriteRemote = false } = options;
   const context = existingContext || await getCloudContext();
   if (!context) return;
 
@@ -167,6 +168,12 @@ async function syncCollectionInBackground(storageKey, localRows, existingContext
 
   try {
     const remoteRows = await readCloudRows(context, storageKey);
+
+    if (overwriteRemote) {
+      await writeCloudRows(context, storageKey, localRows);
+      setSyncState({ mode: 'active', label: 'Cloud sync active' });
+      return;
+    }
 
     if (!remoteRows.length) {
       if (localRows.length) {
@@ -218,7 +225,8 @@ async function readEntityRows(storageKey) {
   return localRows;
 }
 
-async function writeEntityRows(storageKey, rows) {
+async function writeEntityRows(storageKey, rows, options = {}) {
+  const { overwriteRemote = false } = options;
   const normalizedRows = rows.map((row) => ({
     ...row,
     id: row.id || createId(),
@@ -226,7 +234,7 @@ async function writeEntityRows(storageKey, rows) {
     updated_date: row.updated_date || getNowIso(),
   }));
   writeCollection(storageKey, normalizedRows);
-  void syncCollectionInBackground(storageKey, normalizedRows);
+  void syncCollectionInBackground(storageKey, normalizedRows, null, { overwriteRemote });
   return normalizedRows;
 }
 
@@ -454,7 +462,7 @@ function createEntityApi(storageKey) {
     },
     async replace(rows = []) {
       ensureSeeded();
-      await writeEntityRows(storageKey, rows);
+      await writeEntityRows(storageKey, rows, { overwriteRemote: true });
       return rows;
     },
   };
