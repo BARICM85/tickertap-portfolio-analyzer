@@ -3,7 +3,6 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, appendF
 import { createServer } from 'node:http';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import pg from 'pg';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -28,18 +27,14 @@ const env = {
   ...process.env,
 };
 
-const { Pool } = pg;
-
 const PORT = Number(env.PORT || env.ZERODHA_SERVER_PORT || 8000);
 const API_KEY = env.ZERODHA_API_KEY || '';
 const API_SECRET = env.ZERODHA_API_SECRET || '';
 const FRONTEND_URL = env.ZERODHA_FRONTEND_URL || 'http://localhost:5173';
 const REDIRECT_URI = env.ZERODHA_REDIRECT_URI || `http://localhost:${PORT}/api/zerodha/callback`;
 const SESSION_PATH = resolve(projectRoot, env.ZERODHA_SESSION_PATH || 'server/.zerodha-session.json');
-const DATABASE_URL = env.ZERODHA_DATABASE_URL || env.DATABASE_URL || '';
 const FMP_API_KEY = env.FMP_API_KEY || '';
 const FMP_API_BASE_URL = env.FMP_API_BASE_URL || 'https://financialmodelingprep.com/stable';
-const SESSION_STORE_KEY = 'zerodha_session';
 const INSTRUMENTS_CACHE_PATH = resolve(projectRoot, 'server/.zerodha-instruments-cache.json');
 const POSTBACK_LOG_PATH = resolve(projectRoot, 'server/.zerodha-postbacks.log');
 const YAHOO_HEADERS = {
@@ -49,13 +44,6 @@ const YAHOO_HEADERS = {
 const FMP_HEADERS = {
   Accept: 'application/json',
 };
-const sessionPool = DATABASE_URL
-  ? new Pool({
-      connectionString: DATABASE_URL,
-      ssl: DATABASE_URL.includes('sslmode=disable') ? false : { rejectUnauthorized: false },
-    })
-  : null;
-
 function ensureSessionDir() {
   mkdirSync(dirname(SESSION_PATH), { recursive: true });
 }
@@ -78,65 +66,16 @@ function clearFileSession() {
   if (existsSync(SESSION_PATH)) unlinkSync(SESSION_PATH);
 }
 
-async function ensureSessionStore() {
-  if (!sessionPool) return;
-  await sessionPool.query(`
-    CREATE TABLE IF NOT EXISTS app_session_store (
-      key TEXT PRIMARY KEY,
-      value JSONB NOT NULL,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-}
-
 async function readSession() {
-  if (!sessionPool) {
-    return readFileSession();
-  }
-
-  try {
-    const result = await sessionPool.query(
-      'SELECT value FROM app_session_store WHERE key = $1 LIMIT 1',
-      [SESSION_STORE_KEY],
-    );
-    return result.rows[0]?.value || null;
-  } catch {
-    return readFileSession();
-  }
+  return readFileSession();
 }
 
 async function writeSession(session) {
-  if (!sessionPool) {
-    writeFileSession(session);
-    return;
-  }
-
-  try {
-    await sessionPool.query(
-      `
-        INSERT INTO app_session_store (key, value, updated_at)
-        VALUES ($1, $2::jsonb, NOW())
-        ON CONFLICT (key)
-        DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-      `,
-      [SESSION_STORE_KEY, JSON.stringify(session)],
-    );
-  } catch {
-    writeFileSession(session);
-  }
+  writeFileSession(session);
 }
 
 async function clearSession() {
-  if (!sessionPool) {
-    clearFileSession();
-    return;
-  }
-
-  try {
-    await sessionPool.query('DELETE FROM app_session_store WHERE key = $1', [SESSION_STORE_KEY]);
-  } catch {
-    clearFileSession();
-  }
+  clearFileSession();
 }
 
 function readJsonFile(filePath) {
@@ -1367,15 +1306,8 @@ const server = createServer(async (req, res) => {
   }
 });
 
-ensureSessionStore()
-  .then(() => {
-    server.listen(PORT, () => {
-      console.log(`Broker server listening on http://localhost:${PORT}`);
-      console.log(`Configured redirect URI: ${REDIRECT_URI}`);
-      console.log(`Session storage: ${sessionPool ? 'postgres' : 'file'}`);
-    });
-  })
-  .catch((error) => {
-    console.error('Failed to initialize session store.', error);
-    process.exit(1);
-  });
+server.listen(PORT, () => {
+  console.log(`Broker server listening on http://localhost:${PORT}`);
+  console.log(`Configured redirect URI: ${REDIRECT_URI}`);
+  console.log('Session storage: file');
+});
