@@ -33,22 +33,35 @@ async function request(path, options = {}) {
   const timeoutId = controller
     ? window.setTimeout(() => controller.abort(), timeoutMs)
     : null;
+  const endpoint = `${getBrokerApiBase()}${path}`;
 
-  const response = await fetch(`${getBrokerApiBase()}${path}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(fetchOptions.headers || {}),
-    },
-    ...fetchOptions,
-    signal: controller?.signal,
-  });
-  if (timeoutId) window.clearTimeout(timeoutId);
+  try {
+    const response = await fetch(endpoint, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(fetchOptions.headers || {}),
+      },
+      ...fetchOptions,
+      signal: controller?.signal,
+    });
 
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data?.error || 'Broker request failed.');
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data?.error || 'Broker request failed.');
+    }
+    return data;
+  } catch (error) {
+    const aborted = error?.name === 'AbortError' || controller?.signal?.aborted;
+    if (aborted) {
+      throw new Error(`Broker request timed out after ${Math.round(timeoutMs / 1000)}s. Check whether the backend is awake and reachable, then retry.`);
+    }
+    if (error instanceof TypeError) {
+      throw new Error(`Unable to reach broker backend at ${getBrokerApiBase() || endpoint}. Check network access or backend availability.`);
+    }
+    throw error;
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
   }
-  return data;
 }
 
 export function getZerodhaStatus() {

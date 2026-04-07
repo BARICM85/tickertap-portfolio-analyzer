@@ -144,7 +144,9 @@ export default function BrokerSyncPanel({ currentStocks = [], onSynced }) {
             <div className="mt-4 text-sm text-slate-400">
               {status?.connected
                 ? `Ready to sync live holdings. Current local portfolio already contains ${currentSymbols.size} symbols.`
-                : 'Add Zerodha API credentials in .env and connect your account to fetch live broker data.'}
+                : usesHostedBroker
+                  ? 'Hosted backend is active. Add Zerodha credentials to the backend environment and then connect your account to fetch live broker data.'
+                  : 'Add Zerodha API credentials in your local .env and connect your account to fetch live broker data.'}
             </div>
 
             {status?.error ? <p className="mt-3 text-sm text-rose-300">{status.error}</p> : null}
