@@ -198,11 +198,26 @@ This project already includes [render.yaml](./render.yaml).
 - Add backend env vars:
   - `ZERODHA_API_KEY`
   - `ZERODHA_API_SECRET`
+  - `FMP_API_KEY`
   - `ZERODHA_REDIRECT_URI=https://YOUR-RENDER-BACKEND.onrender.com/api/zerodha/callback`
   - `ZERODHA_FRONTEND_URL=https://YOUR-VERCEL-FRONTEND.vercel.app`
   - `ZERODHA_DATABASE_URL=postgres://USER:PASSWORD@HOST:5432/DBNAME`
   - `ZERODHA_SESSION_PATH=server/.zerodha-session.json`
   - `ZERODHA_SERVER_PORT=10000`
+  - `FMP_API_BASE_URL=https://financialmodelingprep.com/stable`
+
+`FMP_API_KEY` powers the stock fundamentals and news-backed fields on the stock detail page:
+
+- Earnings Growth YoY / QoQ
+- Revenue Growth
+- ROE / ROCE
+- Debt-to-Equity
+- Free Cash Flow
+- PEG / PB / EV/EBITDA
+- News Risk
+- Corporate Actions
+
+Without `FMP_API_KEY`, the stock page still works, but those items remain `Unavailable`.
 
 For durable Zerodha sessions in production, set `ZERODHA_DATABASE_URL` or `DATABASE_URL` to a Postgres database. The backend will store the broker session there first and only fall back to `ZERODHA_SESSION_PATH` when no database is configured.
 

@@ -9,3 +9,7 @@ services:
     envVars:
       - key: ZERODHA_SERVER_PORT
         value: 10000
+      - key: FMP_API_KEY
+        sync: false
+      - key: FMP_API_BASE_URL
+        value: https://financialmodelingprep.com/stable
