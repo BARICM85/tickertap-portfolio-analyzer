@@ -1,11 +1,30 @@
+import { Capacitor } from '@capacitor/core';
+
 const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_BROKER_API_URL || '';
+const HOSTED_API_BASE = import.meta.env.VITE_HOSTED_API_BASE_URL || 'https://tickertap-backend-88ts.onrender.com';
 
 function trimSlash(value = '') {
   return value.endsWith('/') ? value.slice(0, -1) : value;
 }
 
+function isLocalApiBase(value = '') {
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(value);
+}
+
 export function getBrokerApiBase() {
-  return trimSlash(DEFAULT_API_BASE);
+  const configuredBase = trimSlash(DEFAULT_API_BASE);
+  if (Capacitor.isNativePlatform() && (!configuredBase || isLocalApiBase(configuredBase))) {
+    return trimSlash(HOSTED_API_BASE);
+  }
+  return configuredBase;
+}
+
+export function getZerodhaRedirectUrl() {
+  const brokerApiBase = getBrokerApiBase();
+  if (brokerApiBase) {
+    return `${brokerApiBase}/api/zerodha/callback`;
+  }
+  return 'http://localhost:8000/api/zerodha/callback';
 }
 
 async function request(path, options = {}) {

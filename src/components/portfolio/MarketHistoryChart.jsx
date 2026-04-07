@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import StockAutocompleteInput from '@/components/shared/StockAutocompleteInput';
 import { Input } from '@/components/ui/input';
 import { namespacedKey } from '@/lib/appConfig';
+import { getBrokerApiBase } from '@/lib/brokerClient';
 import { formatCurrency } from '@/lib/portfolioAnalytics';
 
 const RANGE_OPTIONS = [
@@ -428,7 +429,7 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
   const [horizontalLineInput, setHorizontalLineInput] = useState(savedLayout?.drawings?.horizontalLine ? String(savedLayout.drawings.horizontalLine) : '');
   const [trendStartInput, setTrendStartInput] = useState(savedLayout?.drawings?.trendStart ? String(savedLayout.drawings.trendStart) : '');
   const [trendEndInput, setTrendEndInput] = useState(savedLayout?.drawings?.trendEnd ? String(savedLayout.drawings.trendEnd) : '');
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+  const apiBaseUrl = getBrokerApiBase();
   const intervalConfig = getIntervalConfig(interval);
 
   useEffect(() => {

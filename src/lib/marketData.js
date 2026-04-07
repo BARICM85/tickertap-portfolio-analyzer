@@ -1,3 +1,5 @@
+import { getBrokerApiBase } from '@/lib/brokerClient';
+
 const STOCK_CATALOG = {
   RELIANCE: {
     name: 'Reliance Industries',
@@ -292,7 +294,7 @@ async function fetchMarketSearch(query = '', limit = 8) {
     return MARKET_SEARCH_CACHE.get(cacheKey);
   }
 
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+  const apiBaseUrl = getBrokerApiBase();
 
   try {
     const controller = new AbortController();

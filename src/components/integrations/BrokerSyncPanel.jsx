@@ -1,21 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, LogOut, RefreshCw, ShieldCheck, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
-import { useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
-import { disconnectZerodha, getBrokerApiBase, getZerodhaHoldings, getZerodhaLoginUrl, getZerodhaPositions, getZerodhaStatus, mapZerodhaHoldingToPortfolio } from '@/lib/brokerClient';
+import { disconnectZerodha, getBrokerApiBase, getZerodhaHoldings, getZerodhaLoginUrl, getZerodhaPositions, getZerodhaRedirectUrl, getZerodhaStatus, mapZerodhaHoldingToPortfolio } from '@/lib/brokerClient';
 
 export default function BrokerSyncPanel({ currentStocks = [], onSynced }) {
-  const [searchParams, setSearchParams] = useSearchParams();
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
-  const callbackStatus = searchParams.get('status');
-  const callbackError = searchParams.get('error');
-  const fromBrokerCallback = searchParams.get('broker') === 'zerodha';
   const brokerApiBase = getBrokerApiBase();
+  const redirectUrl = getZerodhaRedirectUrl();
+  const usesHostedBroker = Boolean(brokerApiBase) && !/localhost|127\.0\.0\.1/i.test(brokerApiBase);
 
   const currentSymbols = useMemo(
     () => new Set(currentStocks.map((stock) => stock.symbol?.toUpperCase())),
@@ -37,30 +34,6 @@ export default function BrokerSyncPanel({ currentStocks = [], onSynced }) {
   useEffect(() => {
     loadStatus();
   }, []);
-
-  useEffect(() => {
-    if (!fromBrokerCallback) return undefined;
-
-    if (callbackStatus === 'connected') {
-      toast.success('Zerodha login completed. Refreshing connection status.');
-    } else if (callbackStatus === 'error') {
-      toast.error(callbackError || 'Zerodha login failed.');
-    }
-
-    loadStatus();
-    const timeoutId = window.setTimeout(() => {
-      loadStatus();
-      setSearchParams((current) => {
-        const next = new URLSearchParams(current);
-        next.delete('broker');
-        next.delete('status');
-        next.delete('error');
-        return next;
-      }, { replace: true });
-    }, 1800);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [callbackError, callbackStatus, fromBrokerCallback, setSearchParams]);
 
   const connect = async () => {
     try {
@@ -132,7 +105,7 @@ export default function BrokerSyncPanel({ currentStocks = [], onSynced }) {
           <p className="text-xs uppercase tracking-[0.24em] text-amber-200/80">Broker sync</p>
           <h2 className="mt-2 text-2xl font-semibold text-white">Zerodha import</h2>
           <p className="mt-2 text-sm leading-7 text-slate-400">
-            Connect Kite Connect, fetch holdings and positions through the local backend, and merge them into the portfolio.
+            Connect Kite Connect, fetch holdings and positions through the active backend, and merge them into the portfolio.
           </p>
         </div>
         <div className="rounded-2xl border border-emerald-300/15 bg-emerald-300/10 p-3 text-emerald-200">
@@ -189,10 +162,15 @@ export default function BrokerSyncPanel({ currentStocks = [], onSynced }) {
       </div>
 
       <div className="mt-5 rounded-[24px] border border-white/8 bg-[#111c2c] p-4 text-sm text-slate-400">
-        Backend:
-        <code className="mx-1 rounded bg-black/20 px-2 py-0.5 text-slate-200">{brokerApiBase || 'local backend'}</code>
-        Redirect URL:
-        <code className="mx-1 rounded bg-black/20 px-2 py-0.5 text-slate-200">{brokerApiBase ? `${brokerApiBase}/api/zerodha/callback` : 'http://localhost:8000/api/zerodha/callback'}</code>.
+        {usesHostedBroker ? 'Hosted backend active:' : 'Local backend active:'}
+        <code className="mx-1 rounded bg-black/20 px-2 py-0.5 text-slate-200">{brokerApiBase || 'http://localhost:8000'}</code>
+        {' '}with Zerodha redirect URL
+        <code className="mx-1 rounded bg-black/20 px-2 py-0.5 text-slate-200">{redirectUrl}</code>.
+        {!usesHostedBroker ? (
+          <>
+            {' '}Run <code className="mx-1 rounded bg-black/20 px-2 py-0.5 text-slate-200">npm run dev:server</code> for local broker testing.
+          </>
+        ) : null}
       </div>
     </section>
   );

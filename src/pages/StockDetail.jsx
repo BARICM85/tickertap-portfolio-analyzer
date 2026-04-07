@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { base44 } from '@/api/base44Client';
 import { derivePortfolioAnalytics, formatCurrency, formatPercent } from '@/lib/portfolioAnalytics';
 import { buildStockAdvancedMetrics, getSuggestedHistoryRange } from '@/lib/advancedAnalytics';
-import { getCompanyIntelligence, getLiveMarketHistory } from '@/lib/brokerClient';
+import { getCompanyIntelligence, getLiveMarketHistory, getLiveMarketQuote } from '@/lib/brokerClient';
 
 const LIGHTWEIGHT_STUDY_APP_URL = 'https://lightweight-study-app.vercel.app';
 
@@ -59,8 +59,6 @@ export default function StockDetail() {
   const [refreshing, setRefreshing] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const queryClient = useQueryClient();
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
-
   const stockId = searchParams.get('id');
   const { data: stocks = [] } = useQuery({
     queryKey: ['stocks'],
@@ -96,9 +94,7 @@ export default function StockDetail() {
     if (!stock) return;
     setRefreshing(true);
     try {
-      const response = await fetch(`${apiBaseUrl}/api/market/quote?symbol=${encodeURIComponent(stock.symbol)}`);
-      if (!response.ok) throw new Error('Live quote unavailable');
-      const quote = await response.json();
+      const quote = await getLiveMarketQuote(stock.symbol);
       await base44.entities.Stock.update(stock.id, { current_price: quote.price || stock.current_price });
     } catch {
       const result = await base44.integrations.Core.InvokeLLM({
