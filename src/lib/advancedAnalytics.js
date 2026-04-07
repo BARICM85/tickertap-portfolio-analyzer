@@ -286,7 +286,21 @@ export function buildPortfolioAdvancedMetrics(analytics) {
   };
 }
 
-export function buildStockAdvancedMetrics(holding, historyPayload, benchmarkPayload) {
+function coalesceNumber(...values) {
+  for (const value of values) {
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+function coalesceText(...values) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value;
+  }
+  return null;
+}
+
+export function buildStockAdvancedMetrics(holding, historyPayload, benchmarkPayload, companyIntelligence = null) {
   const points = normalizeHistoryPoints(historyPayload?.points || []);
   const benchmarkPoints = normalizeHistoryPoints(benchmarkPayload?.points || []);
   const startDate = getHoldingStartDate(holding) || parseDate(points[0]?.date);
@@ -332,6 +346,11 @@ export function buildStockAdvancedMetrics(holding, historyPayload, benchmarkPayl
   const alpha = cagr !== null && annualBenchmark !== null && effectiveBeta
     ? (cagr - (RISK_FREE_RATE + (effectiveBeta * (annualBenchmark - RISK_FREE_RATE))))
     : (absoluteReturn !== null && benchmarkReturn !== null ? absoluteReturn - benchmarkReturn : null);
+  const qualityFeed = companyIntelligence?.quality || {};
+  const valuationFeed = companyIntelligence?.valuation || {};
+  const stockRiskFeed = companyIntelligence?.stockSpecificRisk || {};
+  const noteFeed = companyIntelligence?.notes || {};
+  const derivedSector = coalesceText(holding?.sector, companyIntelligence?.meta?.sector, 'Unknown');
 
   return {
     performance: {
@@ -363,36 +382,62 @@ export function buildStockAdvancedMetrics(holding, historyPayload, benchmarkPayl
       volumeStrength,
     },
     valuation: {
-      peRatio: toNumber(holding?.pe_ratio, null),
-      pegRatio: null,
-      pbRatio: null,
-      evToEbitda: null,
+      peRatio: coalesceNumber(valuationFeed.peRatio, toNumber(holding?.pe_ratio, null)),
+      pegRatio: coalesceNumber(valuationFeed.pegRatio),
+      pbRatio: coalesceNumber(valuationFeed.pbRatio),
+      evToEbitda: coalesceNumber(valuationFeed.evToEbitda),
       dividendYield: toNumber(holding?.dividend_yield, null),
-      marketCap: holding?.market_cap || null,
+      marketCap: coalesceText(holding?.market_cap, valuationFeed.marketCap ? String(valuationFeed.marketCap) : null),
     },
     quality: {
-      earningsGrowthYoYPercent: null,
-      earningsGrowthQoQPercent: null,
-      revenueGrowthPercent: null,
-      roePercent: null,
-      rocePercent: null,
-      debtToEquity: null,
-      freeCashFlow: null,
+      earningsGrowthYoYPercent: coalesceNumber(qualityFeed.earningsGrowthYoYPercent),
+      earningsGrowthQoQPercent: coalesceNumber(qualityFeed.earningsGrowthQoQPercent),
+      revenueGrowthPercent: coalesceNumber(qualityFeed.revenueGrowthPercent),
+      roePercent: coalesceNumber(qualityFeed.roePercent),
+      rocePercent: coalesceNumber(qualityFeed.rocePercent),
+      debtToEquity: coalesceNumber(qualityFeed.debtToEquity),
+      freeCashFlow: coalesceNumber(qualityFeed.freeCashFlow),
     },
     stockSpecificRisk: {
-      sectorRisk: classifySectorRisk(holding?.sector),
-      sector: holding?.sector || 'Unknown',
+      sectorRisk: classifySectorRisk(derivedSector),
+      sector: derivedSector,
       portfolioWeight: toNumber(holding?.allocation, null),
-      managementQuality: null,
-      promoterHoldingPercent: null,
-      promoterPledgePercent: null,
-      corporateActions: null,
-      latestNewsRisk: null,
+      managementQuality: coalesceText(stockRiskFeed.managementQuality),
+      promoterHoldingPercent: coalesceNumber(stockRiskFeed.promoterHoldingPercent),
+      promoterPledgePercent: coalesceNumber(stockRiskFeed.promoterPledgePercent),
+      corporateActions: coalesceText(stockRiskFeed.corporateActions),
+      latestNewsRisk: coalesceText(stockRiskFeed.latestNewsRisk),
+    },
+    feedNotes: {
+      quality: {
+        earningsGrowthYoYPercent: noteFeed?.quality?.earningsGrowthYoYPercent || null,
+        earningsGrowthQoQPercent: noteFeed?.quality?.earningsGrowthQoQPercent || null,
+        revenueGrowthPercent: noteFeed?.quality?.revenueGrowthPercent || null,
+        roePercent: noteFeed?.quality?.roePercent || null,
+        rocePercent: noteFeed?.quality?.rocePercent || null,
+        debtToEquity: noteFeed?.quality?.debtToEquity || null,
+        freeCashFlow: noteFeed?.quality?.freeCashFlow || null,
+      },
+      valuation: {
+        peRatio: noteFeed?.valuation?.peRatio || null,
+        pegRatio: noteFeed?.valuation?.pegRatio || null,
+        pbRatio: noteFeed?.valuation?.pbRatio || null,
+        evToEbitda: noteFeed?.valuation?.evToEbitda || null,
+      },
+      stockSpecificRisk: {
+        managementQuality: noteFeed?.stockSpecificRisk?.managementQuality || null,
+        promoterHoldingPercent: noteFeed?.stockSpecificRisk?.promoterHoldingPercent || null,
+        promoterPledgePercent: noteFeed?.stockSpecificRisk?.promoterPledgePercent || null,
+        corporateActions: noteFeed?.stockSpecificRisk?.corporateActions || null,
+        latestNewsRisk: noteFeed?.stockSpecificRisk?.latestNewsRisk || null,
+      },
     },
     meta: {
       historyRangeDays: points.length,
       benchmarkSymbol: benchmarkPayload?.symbol || '^NSEI',
       historyAvailable: points.length > 20,
+      intelligenceSource: companyIntelligence?.source || null,
+      intelligenceConfigured: Boolean(companyIntelligence?.configured),
     },
   };
 }

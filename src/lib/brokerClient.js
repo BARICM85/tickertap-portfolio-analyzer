@@ -60,6 +60,10 @@ export function getLiveMarketHistory(symbol, range = 'ytd', interval = '1d') {
   return request(`/api/market/history?symbol=${encodeURIComponent(symbol)}&range=${encodeURIComponent(range)}&interval=${encodeURIComponent(interval)}`);
 }
 
+export function getCompanyIntelligence(symbol) {
+  return request(`/api/company/intelligence?symbol=${encodeURIComponent(symbol)}`, { timeoutMs: 8000 });
+}
+
 export async function getLiveMarketQuotes(symbols = [], options = {}) {
   const uniqueSymbols = [...new Set(symbols.map((symbol) => String(symbol || '').trim().toUpperCase()).filter(Boolean))];
   const concurrency = Math.max(1, Math.min(options.concurrency || 6, 10));

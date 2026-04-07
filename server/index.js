@@ -37,11 +37,16 @@ const FRONTEND_URL = env.ZERODHA_FRONTEND_URL || 'http://localhost:5173';
 const REDIRECT_URI = env.ZERODHA_REDIRECT_URI || `http://localhost:${PORT}/api/zerodha/callback`;
 const SESSION_PATH = resolve(projectRoot, env.ZERODHA_SESSION_PATH || 'server/.zerodha-session.json');
 const DATABASE_URL = env.ZERODHA_DATABASE_URL || env.DATABASE_URL || '';
+const FMP_API_KEY = env.FMP_API_KEY || '';
+const FMP_API_BASE_URL = env.FMP_API_BASE_URL || 'https://financialmodelingprep.com/stable';
 const SESSION_STORE_KEY = 'zerodha_session';
 const INSTRUMENTS_CACHE_PATH = resolve(projectRoot, 'server/.zerodha-instruments-cache.json');
 const POSTBACK_LOG_PATH = resolve(projectRoot, 'server/.zerodha-postbacks.log');
 const YAHOO_HEADERS = {
   'User-Agent': 'Mozilla/5.0 Codex Portfolio Analyzer',
+  Accept: 'application/json',
+};
+const FMP_HEADERS = {
   Accept: 'application/json',
 };
 const sessionPool = DATABASE_URL
@@ -295,6 +300,274 @@ function buildYahooSymbolCandidates(symbol = '') {
     `${trimmed}.BO`,
     trimmed,
   ])];
+}
+
+function buildCompanySymbolCandidates(symbol = '') {
+  const trimmed = symbol.trim().toUpperCase();
+  if (!trimmed || trimmed.startsWith('^')) return [];
+  if (trimmed.includes('.')) return [trimmed];
+  return [...new Set([
+    trimmed,
+    `${trimmed}.NS`,
+    `${trimmed}.BO`,
+  ])];
+}
+
+function toNumber(value, fallback = null) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function extractArrayPayload(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+}
+
+function pickNumber(source, keys = [], fallback = null) {
+  for (const key of keys) {
+    const value = toNumber(source?.[key], null);
+    if (value !== null) return value;
+  }
+  return fallback;
+}
+
+function computeGrowthPercent(currentValue, previousValue) {
+  const current = toNumber(currentValue, null);
+  const previous = toNumber(previousValue, null);
+  if (current === null || previous === null || previous === 0) return null;
+  return ((current - previous) / Math.abs(previous)) * 100;
+}
+
+function formatHeadlineNote(item) {
+  if (!item) return null;
+  const title = item.title || item.headline || item.text || '';
+  const publishedAt = item.publishedDate || item.date || item.published_at || item.published;
+  if (!title) return null;
+  if (!publishedAt) return title;
+  return `${title} (${String(publishedAt).slice(0, 10)})`;
+}
+
+function summarizeNewsRisk(items = []) {
+  const recentItems = items.filter(Boolean);
+  if (!recentItems.length) {
+    return { value: null, note: null };
+  }
+
+  const riskTerms = ['downgrade', 'lawsuit', 'fraud', 'warning', 'miss', 'pledge', 'debt', 'probe', 'penalty', 'loss', 'decline'];
+  const joinedText = recentItems
+    .map((item) => `${item.title || ''} ${item.text || ''}`.toLowerCase())
+    .join(' ');
+  const hits = riskTerms.reduce((count, term) => count + (joinedText.includes(term) ? 1 : 0), 0);
+  const value = hits >= 2 ? 'Elevated' : hits === 1 ? 'Mixed' : 'Calm';
+
+  return {
+    value,
+    note: formatHeadlineNote(recentItems[0]),
+  };
+}
+
+function summarizeCorporateActions(items = []) {
+  const recentItems = items.filter(Boolean);
+  if (!recentItems.length) {
+    return { value: null, note: null };
+  }
+
+  return {
+    value: `${recentItems.length} recent releases`,
+    note: formatHeadlineNote(recentItems[0]),
+  };
+}
+
+async function fetchFmp(path, params = {}) {
+  if (!FMP_API_KEY) {
+    throw new Error('FMP feed not configured.');
+  }
+
+  const baseUrl = `${FMP_API_BASE_URL.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
+  const url = new URL(baseUrl);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      url.searchParams.set(key, String(value));
+    }
+  });
+  url.searchParams.set('apikey', FMP_API_KEY);
+
+  const response = await fetch(url, { headers: FMP_HEADERS });
+  const data = await response.json().catch(() => []);
+  if (!response.ok) {
+    throw new Error(data?.error || data?.message || 'FMP request failed.');
+  }
+  return data;
+}
+
+async function resolveCompanyFeedSymbol(symbol = '') {
+  const candidates = buildCompanySymbolCandidates(symbol);
+  if (!candidates.length) return null;
+
+  for (const candidate of candidates) {
+    try {
+      const payload = await fetchFmp('profile', { symbol: candidate });
+      const profile = extractArrayPayload(payload)[0];
+      if (profile) {
+        return { symbol: candidate, profile };
+      }
+    } catch {
+      // keep scanning other candidates
+    }
+  }
+
+  try {
+    const payload = await fetchFmp('search-exchange-variants', { symbol: symbol.trim().toUpperCase() });
+    const variants = extractArrayPayload(payload);
+    const preferred = variants.find((item) => ['NSE', 'BSE'].includes(String(item.exchangeShortName || item.exchange || '').toUpperCase()));
+    if (preferred?.symbol) {
+      return { symbol: preferred.symbol, profile: null };
+    }
+  } catch {
+    // keep fallback null
+  }
+
+  return null;
+}
+
+async function fetchCompanyIntelligence(symbol = '') {
+  if (!FMP_API_KEY) {
+    return {
+      configured: false,
+      source: 'unconfigured',
+      symbol: symbol.trim().toUpperCase(),
+      valuation: {},
+      quality: {},
+      stockSpecificRisk: {},
+      notes: {},
+      meta: {
+        provider: 'fmp',
+        reason: 'FMP_API_KEY missing',
+      },
+    };
+  }
+
+  const resolved = await resolveCompanyFeedSymbol(symbol);
+  if (!resolved?.symbol) {
+    return {
+      configured: true,
+      source: 'fmp',
+      symbol: symbol.trim().toUpperCase(),
+      valuation: {},
+      quality: {},
+      stockSpecificRisk: {},
+      notes: {},
+      meta: {
+        provider: 'fmp',
+        reason: 'Symbol not found in provider feed',
+      },
+    };
+  }
+
+  const profile = resolved.profile || null;
+  const settled = await Promise.allSettled([
+    fetchFmp('profile', { symbol: resolved.symbol }),
+    fetchFmp('key-metrics-ttm', { symbol: resolved.symbol }),
+    fetchFmp('ratios-ttm', { symbol: resolved.symbol }),
+    fetchFmp('income-statement', { symbol: resolved.symbol, period: 'annual', limit: 2 }),
+    fetchFmp('income-statement', { symbol: resolved.symbol, period: 'quarter', limit: 2 }),
+    fetchFmp('cash-flow-statement', { symbol: resolved.symbol, period: 'annual', limit: 1 }),
+    fetchFmp('company-executives', { symbol: resolved.symbol }),
+    fetchFmp('news/stock', { symbols: resolved.symbol, limit: 5 }),
+    fetchFmp('news/press-releases', { symbols: resolved.symbol, limit: 3 }),
+  ]);
+
+  const [
+    profileResult,
+    keyMetricsResult,
+    ratiosResult,
+    annualIncomeResult,
+    quarterlyIncomeResult,
+    cashFlowResult,
+    executivesResult,
+    newsResult,
+    pressReleaseResult,
+  ] = settled;
+
+  const liveProfile = extractArrayPayload(profileResult.status === 'fulfilled' ? profileResult.value : [profile])[0] || profile;
+  const keyMetrics = extractArrayPayload(keyMetricsResult.status === 'fulfilled' ? keyMetricsResult.value : [])[0] || {};
+  const ratios = extractArrayPayload(ratiosResult.status === 'fulfilled' ? ratiosResult.value : [])[0] || {};
+  const annualIncomeRows = extractArrayPayload(annualIncomeResult.status === 'fulfilled' ? annualIncomeResult.value : []);
+  const quarterlyIncomeRows = extractArrayPayload(quarterlyIncomeResult.status === 'fulfilled' ? quarterlyIncomeResult.value : []);
+  const cashFlowRows = extractArrayPayload(cashFlowResult.status === 'fulfilled' ? cashFlowResult.value : []);
+  const executives = extractArrayPayload(executivesResult.status === 'fulfilled' ? executivesResult.value : []);
+  const newsItems = extractArrayPayload(newsResult.status === 'fulfilled' ? newsResult.value : []);
+  const pressReleases = extractArrayPayload(pressReleaseResult.status === 'fulfilled' ? pressReleaseResult.value : []);
+
+  const annualCurrent = annualIncomeRows[0] || {};
+  const annualPrevious = annualIncomeRows[1] || {};
+  const quarterlyCurrent = quarterlyIncomeRows[0] || {};
+  const quarterlyPrevious = quarterlyIncomeRows[1] || {};
+  const latestCashFlow = cashFlowRows[0] || {};
+  const newsRisk = summarizeNewsRisk(newsItems);
+  const corporateActions = summarizeCorporateActions(pressReleases);
+
+  return {
+    configured: true,
+    source: 'fmp',
+    symbol: resolved.symbol,
+    valuation: {
+      peRatio: pickNumber(keyMetrics, ['peRatioTTM', 'peRatio'], pickNumber(ratios, ['priceEarningsRatioTTM'], pickNumber(liveProfile, ['pe'], null))),
+      pegRatio: pickNumber(ratios, ['pegRatioTTM', 'pegRatio'], null),
+      pbRatio: pickNumber(keyMetrics, ['pbRatioTTM', 'priceToBookRatioTTM', 'pbRatio'], pickNumber(ratios, ['priceToBookRatioTTM', 'priceToBookRatio'], null)),
+      evToEbitda: pickNumber(keyMetrics, ['enterpriseValueOverEBITDATTM', 'evToEbitdaTTM'], pickNumber(ratios, ['enterpriseValueMultipleTTM', 'enterpriseValueMultiple'], null)),
+      marketCap: pickNumber(liveProfile, ['mktCap', 'marketCap'], null),
+    },
+    quality: {
+      earningsGrowthYoYPercent: computeGrowthPercent(annualCurrent.netIncome, annualPrevious.netIncome),
+      earningsGrowthQoQPercent: computeGrowthPercent(quarterlyCurrent.netIncome, quarterlyPrevious.netIncome),
+      revenueGrowthPercent: computeGrowthPercent(annualCurrent.revenue, annualPrevious.revenue),
+      roePercent: pickNumber(keyMetrics, ['roeTTM', 'roe'], pickNumber(ratios, ['returnOnEquityTTM', 'returnOnEquity'], null)),
+      rocePercent: pickNumber(keyMetrics, ['roicTTM', 'returnOnCapitalEmployedTTM'], pickNumber(ratios, ['returnOnCapitalEmployedTTM', 'returnOnCapitalEmployed'], null)),
+      debtToEquity: pickNumber(ratios, ['debtEquityRatioTTM', 'debtToEquityTTM', 'debtEquityRatio', 'debtToEquity'], null),
+      freeCashFlow: pickNumber(latestCashFlow, ['freeCashFlow', 'freeCashFlowTTM'], null),
+    },
+    stockSpecificRisk: {
+      managementQuality: null,
+      promoterHoldingPercent: null,
+      promoterPledgePercent: null,
+      latestNewsRisk: newsRisk.value,
+      corporateActions: corporateActions.value,
+    },
+    notes: {
+      quality: {
+        earningsGrowthYoYPercent: annualCurrent.date ? `Annual net income growth from ${annualCurrent.date}` : null,
+        earningsGrowthQoQPercent: quarterlyCurrent.date ? `Quarterly net income growth from ${quarterlyCurrent.date}` : null,
+        revenueGrowthPercent: annualCurrent.date ? `Annual revenue growth from ${annualCurrent.date}` : null,
+        roePercent: 'Trailing twelve-month return on equity',
+        rocePercent: 'Provider return-on-capital proxy',
+        debtToEquity: 'Trailing leverage ratio',
+        freeCashFlow: latestCashFlow.date ? `Latest annual cash-flow statement ${latestCashFlow.date}` : null,
+      },
+      valuation: {
+        peRatio: liveProfile?.companyName ? `${liveProfile.companyName} profile + TTM metrics` : 'Provider valuation feed',
+        pegRatio: 'Growth-adjusted valuation from provider feed',
+        pbRatio: 'Price-to-book from provider feed',
+        evToEbitda: 'Enterprise value versus EBITDA from provider feed',
+      },
+      stockSpecificRisk: {
+        managementQuality: executives.length ? `${executives.length} executives available; qualitative scoring still manual.` : 'Executive feed not available for this symbol.',
+        promoterHoldingPercent: 'Promoter holding feed still not connected for Indian disclosures.',
+        promoterPledgePercent: 'Promoter pledge feed still not connected for Indian disclosures.',
+        latestNewsRisk: newsRisk.note,
+        corporateActions: corporateActions.note,
+      },
+    },
+    meta: {
+      provider: 'fmp',
+      executivesCount: executives.length,
+      newsCount: newsItems.length,
+      pressReleaseCount: pressReleases.length,
+      companyName: liveProfile?.companyName || liveProfile?.name || null,
+      sector: liveProfile?.sector || null,
+    },
+  };
 }
 
 function parseCsv(text = '') {
@@ -1018,6 +1291,12 @@ const server = createServer(async (req, res) => {
       const interval = url.searchParams.get('interval') || '1d';
       const history = await fetchMarketHistory(symbol, range, interval);
       return sendJson(res, 200, history);
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/company/intelligence') {
+      const symbol = url.searchParams.get('symbol') || '';
+      const intelligence = await fetchCompanyIntelligence(symbol);
+      return sendJson(res, 200, intelligence);
     }
 
     if (req.method === 'GET' && url.pathname === '/api/options/chain') {

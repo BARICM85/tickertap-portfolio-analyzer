@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { base44 } from '@/api/base44Client';
 import { derivePortfolioAnalytics, formatCurrency, formatPercent } from '@/lib/portfolioAnalytics';
 import { buildStockAdvancedMetrics, getSuggestedHistoryRange } from '@/lib/advancedAnalytics';
-import { getLiveMarketHistory } from '@/lib/brokerClient';
+import { getCompanyIntelligence, getLiveMarketHistory } from '@/lib/brokerClient';
 
 const LIGHTWEIGHT_STUDY_APP_URL = 'https://lightweight-study-app.vercel.app';
 
@@ -85,6 +85,13 @@ export default function StockDetail() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const { data: companyIntelligence } = useQuery({
+    queryKey: ['stock-company-intelligence', stock?.symbol],
+    queryFn: () => getCompanyIntelligence(stock.symbol),
+    enabled: Boolean(stock?.symbol),
+    staleTime: 30 * 60 * 1000,
+  });
+
   const refresh = async () => {
     if (!stock) return;
     setRefreshing(true);
@@ -143,7 +150,10 @@ export default function StockDetail() {
   }
 
   const positive = stock.pnl >= 0;
-  const advancedMetrics = buildStockAdvancedMetrics(stock, stockHistory, benchmarkHistory);
+  const advancedMetrics = buildStockAdvancedMetrics(stock, stockHistory, benchmarkHistory, companyIntelligence);
+  const formattedMarketCap = Number.isFinite(Number(advancedMetrics.valuation.marketCap))
+    ? formatCurrency(Number(advancedMetrics.valuation.marketCap))
+    : advancedMetrics.valuation.marketCap;
   const performanceMetrics = [
     { label: 'Absolute Return', value: formatMaybePercent(advancedMetrics.performance.absoluteReturnPercent), note: 'Gain/loss from your cost basis' },
     { label: 'CAGR', value: formatMaybePercent(advancedMetrics.performance.cagrPercent), note: 'Annualized return since first buy' },
@@ -164,20 +174,26 @@ export default function StockDetail() {
     { label: 'Treynor Ratio', value: formatMaybeRatio(advancedMetrics.riskAdjusted.treynorRatio), note: 'Return per unit of beta' },
   ];
   const valuationMetrics = [
-    { label: 'PE Ratio', value: formatMaybeRatio(advancedMetrics.valuation.peRatio, 1), note: advancedMetrics.valuation.marketCap ? `Market cap ${advancedMetrics.valuation.marketCap}` : 'Valuation multiple from live profile' },
-    { label: 'PEG Ratio', value: formatMaybeRatio(advancedMetrics.valuation.pegRatio, 2), note: unavailableNote('Growth-adjusted valuation') },
-    { label: 'PB Ratio', value: formatMaybeRatio(advancedMetrics.valuation.pbRatio, 2), note: unavailableNote('Book value') },
-    { label: 'EV / EBITDA', value: formatMaybeRatio(advancedMetrics.valuation.evToEbitda, 2), note: unavailableNote('Enterprise value') },
+    {
+      label: 'PE Ratio',
+      value: formatMaybeRatio(advancedMetrics.valuation.peRatio, 1),
+      note: formattedMarketCap
+        ? `Market cap ${formattedMarketCap}`
+        : (advancedMetrics.feedNotes.valuation.peRatio || 'Valuation multiple from live profile'),
+    },
+    { label: 'PEG Ratio', value: formatMaybeRatio(advancedMetrics.valuation.pegRatio, 2), note: advancedMetrics.feedNotes.valuation.pegRatio || unavailableNote('Growth-adjusted valuation') },
+    { label: 'PB Ratio', value: formatMaybeRatio(advancedMetrics.valuation.pbRatio, 2), note: advancedMetrics.feedNotes.valuation.pbRatio || unavailableNote('Book value') },
+    { label: 'EV / EBITDA', value: formatMaybeRatio(advancedMetrics.valuation.evToEbitda, 2), note: advancedMetrics.feedNotes.valuation.evToEbitda || unavailableNote('Enterprise value') },
     { label: 'Dividend Yield', value: formatMaybePercent(advancedMetrics.valuation.dividendYield), note: 'Income yield snapshot' },
   ];
   const qualityMetrics = [
-    { label: 'Earnings Growth YoY', value: formatMaybePercent(advancedMetrics.quality.earningsGrowthYoYPercent), note: unavailableNote('Earnings statement') },
-    { label: 'Earnings Growth QoQ', value: formatMaybePercent(advancedMetrics.quality.earningsGrowthQoQPercent), note: unavailableNote('Quarterly earnings') },
-    { label: 'Revenue Growth', value: formatMaybePercent(advancedMetrics.quality.revenueGrowthPercent), note: unavailableNote('Revenue statement') },
-    { label: 'ROE', value: formatMaybePercent(advancedMetrics.quality.roePercent), note: unavailableNote('Balance sheet') },
-    { label: 'ROCE', value: formatMaybePercent(advancedMetrics.quality.rocePercent), note: unavailableNote('Capital efficiency') },
-    { label: 'Debt / Equity', value: formatMaybeRatio(advancedMetrics.quality.debtToEquity, 2), note: unavailableNote('Leverage') },
-    { label: 'Free Cash Flow', value: formatMaybeCurrency(advancedMetrics.quality.freeCashFlow), note: unavailableNote('Cash flow statement') },
+    { label: 'Earnings Growth YoY', value: formatMaybePercent(advancedMetrics.quality.earningsGrowthYoYPercent), note: advancedMetrics.feedNotes.quality.earningsGrowthYoYPercent || unavailableNote('Earnings statement') },
+    { label: 'Earnings Growth QoQ', value: formatMaybePercent(advancedMetrics.quality.earningsGrowthQoQPercent), note: advancedMetrics.feedNotes.quality.earningsGrowthQoQPercent || unavailableNote('Quarterly earnings') },
+    { label: 'Revenue Growth', value: formatMaybePercent(advancedMetrics.quality.revenueGrowthPercent), note: advancedMetrics.feedNotes.quality.revenueGrowthPercent || unavailableNote('Revenue statement') },
+    { label: 'ROE', value: formatMaybePercent(advancedMetrics.quality.roePercent), note: advancedMetrics.feedNotes.quality.roePercent || unavailableNote('Balance sheet') },
+    { label: 'ROCE', value: formatMaybePercent(advancedMetrics.quality.rocePercent), note: advancedMetrics.feedNotes.quality.rocePercent || unavailableNote('Capital efficiency') },
+    { label: 'Debt / Equity', value: formatMaybeRatio(advancedMetrics.quality.debtToEquity, 2), note: advancedMetrics.feedNotes.quality.debtToEquity || unavailableNote('Leverage') },
+    { label: 'Free Cash Flow', value: formatMaybeCurrency(advancedMetrics.quality.freeCashFlow), note: advancedMetrics.feedNotes.quality.freeCashFlow || unavailableNote('Cash flow statement') },
   ];
   const technicalMetrics = [
     { label: 'Trend', value: advancedMetrics.technicals.trend, note: 'Based on price vs 50DMA and 200DMA' },
@@ -207,11 +223,11 @@ export default function StockDetail() {
   const stockRiskMetrics = [
     { label: 'Sector Risk', value: advancedMetrics.stockSpecificRisk.sectorRisk, note: `${advancedMetrics.stockSpecificRisk.sector} sector profile` },
     { label: 'Portfolio Weight', value: formatMaybePercent(advancedMetrics.stockSpecificRisk.portfolioWeight), note: 'Position size inside your portfolio' },
-    { label: 'Management Quality', value: advancedMetrics.stockSpecificRisk.managementQuality || 'Unavailable', note: unavailableNote('Governance research') },
-    { label: 'Promoter Holding', value: formatMaybePercent(advancedMetrics.stockSpecificRisk.promoterHoldingPercent), note: unavailableNote('Shareholding pattern') },
-    { label: 'Promoter Pledge', value: formatMaybePercent(advancedMetrics.stockSpecificRisk.promoterPledgePercent), note: unavailableNote('Pledge disclosure') },
-    { label: 'News Risk', value: advancedMetrics.stockSpecificRisk.latestNewsRisk || 'Unavailable', note: unavailableNote('News / events') },
-    { label: 'Corporate Actions', value: advancedMetrics.stockSpecificRisk.corporateActions || 'Unavailable', note: unavailableNote('Corporate action feed') },
+    { label: 'Management Quality', value: advancedMetrics.stockSpecificRisk.managementQuality || 'Unavailable', note: advancedMetrics.feedNotes.stockSpecificRisk.managementQuality || unavailableNote('Governance research') },
+    { label: 'Promoter Holding', value: formatMaybePercent(advancedMetrics.stockSpecificRisk.promoterHoldingPercent), note: advancedMetrics.feedNotes.stockSpecificRisk.promoterHoldingPercent || unavailableNote('Shareholding pattern') },
+    { label: 'Promoter Pledge', value: formatMaybePercent(advancedMetrics.stockSpecificRisk.promoterPledgePercent), note: advancedMetrics.feedNotes.stockSpecificRisk.promoterPledgePercent || unavailableNote('Pledge disclosure') },
+    { label: 'News Risk', value: advancedMetrics.stockSpecificRisk.latestNewsRisk || 'Unavailable', note: advancedMetrics.feedNotes.stockSpecificRisk.latestNewsRisk || unavailableNote('News / events') },
+    { label: 'Corporate Actions', value: advancedMetrics.stockSpecificRisk.corporateActions || 'Unavailable', note: advancedMetrics.feedNotes.stockSpecificRisk.corporateActions || unavailableNote('Corporate action feed') },
   ];
 
   return (
