@@ -5,6 +5,7 @@ import { queryClientInstance } from '@/lib/query-client';
 import PageNotFound from '@/lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import AppLayout from '@/components/layout/AppLayout';
+import AlgoTrading from '@/pages/AlgoTrading';
 import Dashboard from '@/pages/Dashboard';
 import OptionChainPage from '@/pages/OptionChainPage';
 import Portfolio from '@/pages/Portfolio';
@@ -32,6 +33,7 @@ function AuthenticatedApp() {
         <Route path="/OptionChain" element={<OptionChainPage />} />
         <Route path="/StockDetail" element={<StockDetail />} />
         <Route path="/RiskAnalysis" element={<RiskAnalysis />} />
+        <Route path="/AlgoTrading" element={<AlgoTrading />} />
         <Route path="/Watchlist" element={<WatchlistPage />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />

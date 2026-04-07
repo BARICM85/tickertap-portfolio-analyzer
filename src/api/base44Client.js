@@ -6,12 +6,16 @@ import { isFirebaseConfigured, loadFirebaseDataLayer } from '@/lib/firebaseAuth'
 const STORAGE_KEYS = {
   stocks: namespacedKey('portfolio_analyzer_stocks'),
   watchlist: namespacedKey('portfolio_analyzer_watchlist'),
+  algoStrategies: namespacedKey('portfolio_analyzer_algo_strategies'),
+  algoRuns: namespacedKey('portfolio_analyzer_algo_runs'),
   session: namespacedKey('portfolio_analyzer_session'),
   bootstrapped: namespacedKey('portfolio_analyzer_bootstrapped'),
 };
 const CLOUD_ENTITY_KEYS = {
   [STORAGE_KEYS.stocks]: 'stocks',
   [STORAGE_KEYS.watchlist]: 'watchlist',
+  [STORAGE_KEYS.algoStrategies]: 'algo_strategies',
+  [STORAGE_KEYS.algoRuns]: 'algo_runs',
 };
 
 const uploadedFiles = new Map();
@@ -492,6 +496,8 @@ export const base44 = {
   entities: {
     Stock: createEntityApi(STORAGE_KEYS.stocks),
     Watchlist: createEntityApi(STORAGE_KEYS.watchlist),
+    AlgoStrategy: createEntityApi(STORAGE_KEYS.algoStrategies),
+    AlgoRun: createEntityApi(STORAGE_KEYS.algoRuns),
   },
   integrations: {
     Core: {
