@@ -230,6 +230,62 @@ export function createAlgoStrategyDraft(templateId = 'sma_crossover') {
   };
 }
 
+export function createAlgoControlDraft() {
+  return {
+    scope: 'global',
+    kill_switch: true,
+    live_execution_enabled: false,
+    max_daily_loss_percent: 2,
+    max_open_positions: 5,
+    notes: 'Default to paper-safe mode until broker, risk, and schedule checks are approved.',
+  };
+}
+
+export function createAlgoSchedulerDraft(strategy = null) {
+  return {
+    strategy_id: strategy?.id || '',
+    strategy_name: strategy?.name || '',
+    status: 'paused',
+    frequency: 'market_open',
+    run_time: '09:20',
+    timezone: 'Asia/Calcutta',
+    last_run_at: null,
+    notes: 'Runs only as an operator-approved scheduler configuration.',
+  };
+}
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+export function computeNextScheduledRun(schedule = {}, now = new Date()) {
+  const base = new Date(now);
+  const [hour, minute] = String(schedule.run_time || '09:20').split(':').map((value) => Number(value));
+  const next = new Date(base);
+  next.setHours(Number.isFinite(hour) ? hour : 9, Number.isFinite(minute) ? minute : 20, 0, 0);
+
+  if (schedule.frequency === 'hourly') {
+    if (next <= base) {
+      next.setHours(next.getHours() + 1);
+    }
+    return next;
+  }
+
+  if (schedule.frequency === 'weekly') {
+    while (next <= base || next.getDay() === 0 || next.getDay() === 6) {
+      next.setDate(next.getDate() + 1);
+    }
+    return next;
+  }
+
+  while (next <= base || next.getDay() === 0 || next.getDay() === 6) {
+    next.setDate(next.getDate() + 1);
+  }
+  return next;
+}
+
 export function buildStrategySignals(strategy, rawHistory = []) {
   const history = rawHistory.map(normalizePoint).filter((point) => Number.isFinite(point.close) && point.close > 0);
   switch (strategy?.template_id) {
@@ -333,5 +389,63 @@ export function backtestStrategy(strategy, rawHistory = []) {
     },
     trades,
     equityCurve,
+  };
+}
+
+export function buildPaperOrderIntent({
+  strategy,
+  latestRun,
+  currentPrice,
+  brokerConnected = false,
+  killSwitch = true,
+  liveExecutionEnabled = false,
+}) {
+  if (!strategy || !latestRun || !Number.isFinite(Number(currentPrice)) || Number(currentPrice) <= 0) {
+    return null;
+  }
+
+  const signal = String(latestRun.summary?.lastSignal || '');
+  const side = signal.startsWith('Buy') ? 'BUY' : signal.startsWith('Sell') ? 'SELL' : null;
+  if (!side) return null;
+
+  const capital = Number(strategy.capital || 0);
+  const riskPercent = Number(strategy.risk_percent || 1);
+  const riskBudget = capital * (riskPercent / 100);
+  const quantity = Math.max(1, Math.floor((riskBudget || capital * 0.1 || currentPrice) / currentPrice));
+  const notional = quantity * currentPrice;
+  const mode = strategy.mode || 'paper';
+
+  let status = 'paper_ready';
+  let route = 'paper_blotter';
+  let reason = 'Ready for paper execution.';
+
+  if (killSwitch) {
+    status = 'blocked';
+    reason = 'Global kill switch is engaged.';
+  } else if (mode === 'live' && !liveExecutionEnabled) {
+    status = 'blocked';
+    reason = 'Live execution is not enabled in operator controls.';
+  } else if (mode === 'live' && !brokerConnected) {
+    status = 'blocked';
+    reason = 'Broker session is not connected.';
+  } else if (mode === 'live') {
+    status = 'live_ready';
+    route = 'zerodha_router';
+    reason = 'Eligible for broker routing after final confirmation.';
+  }
+
+  return {
+    strategy_id: strategy.id,
+    strategy_name: strategy.name,
+    symbol: strategy.symbol,
+    side,
+    quantity,
+    trigger_price: Number(currentPrice.toFixed(2)),
+    notional: Number(notional.toFixed(2)),
+    mode,
+    route,
+    status,
+    reason,
+    signal,
   };
 }

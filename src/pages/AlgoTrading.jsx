@@ -1,15 +1,38 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, Bot, Cable, Cpu, Play, RefreshCw, Rocket, ShieldCheck, Square, Waves } from 'lucide-react';
+import {
+  Activity,
+  Bot,
+  Cable,
+  ClipboardList,
+  Clock3,
+  Cpu,
+  Play,
+  RefreshCw,
+  Rocket,
+  ShieldAlert,
+  ShieldCheck,
+  Square,
+  Waves,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ALGO_ARCHITECTURE_BLOCKS, ALGO_STRATEGY_TEMPLATES, backtestStrategy, createAlgoStrategyDraft } from '@/lib/algoTrading';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  ALGO_ARCHITECTURE_BLOCKS,
+  ALGO_STRATEGY_TEMPLATES,
+  backtestStrategy,
+  buildPaperOrderIntent,
+  computeNextScheduledRun,
+  createAlgoControlDraft,
+  createAlgoSchedulerDraft,
+  createAlgoStrategyDraft,
+} from '@/lib/algoTrading';
 import { getBrokerApiBase, getZerodhaRedirectUrl, getZerodhaStatus, getLiveMarketHistory } from '@/lib/brokerClient';
 import { formatCurrency } from '@/lib/portfolioAnalytics';
 
@@ -66,6 +89,35 @@ function formatPercent(value) {
   return `${numeric >= 0 ? '+' : ''}${numeric.toFixed(2)}%`;
 }
 
+function formatDateTime(value) {
+  if (!value) return '--';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '--';
+  return date.toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function getLatestReferencePrice(run) {
+  const trades = run?.trades || [];
+  const latestTrade = trades[trades.length - 1];
+  return Number(latestTrade?.exitPrice || latestTrade?.entryPrice || 0);
+}
+
+function summarizeScheduler(schedule) {
+  if (!schedule) return 'No schedule configured';
+  const frequencyMap = {
+    market_open: 'Market open',
+    hourly: 'Hourly',
+    weekly: 'Weekly',
+  };
+  return `${frequencyMap[schedule.frequency] || schedule.frequency} at ${schedule.run_time || '--:--'}`;
+}
+
 export default function AlgoTrading() {
   const queryClient = useQueryClient();
   const brokerApiBase = getBrokerApiBase();
@@ -74,6 +126,8 @@ export default function AlgoTrading() {
   const [runningId, setRunningId] = useState(null);
   const [selectedStrategyId, setSelectedStrategyId] = useState(null);
   const [draft, setDraft] = useState(() => createAlgoStrategyDraft());
+  const [creatingControl, setCreatingControl] = useState(false);
+  const [queueingIntent, setQueueingIntent] = useState(false);
 
   const { data: stocks = [] } = useQuery({
     queryKey: ['stocks'],
@@ -87,6 +141,18 @@ export default function AlgoTrading() {
     queryKey: ['algo-runs'],
     queryFn: () => base44.entities.AlgoRun.list('-created_date'),
   });
+  const { data: orderIntents = [] } = useQuery({
+    queryKey: ['algo-order-intents'],
+    queryFn: () => base44.entities.AlgoOrderIntent.list('-created_date'),
+  });
+  const { data: schedulers = [] } = useQuery({
+    queryKey: ['algo-schedulers'],
+    queryFn: () => base44.entities.AlgoScheduler.list('-created_date'),
+  });
+  const { data: controls = [] } = useQuery({
+    queryKey: ['algo-controls'],
+    queryFn: () => base44.entities.AlgoControl.list('-created_date'),
+  });
   const { data: zerodhaStatus } = useQuery({
     queryKey: ['algo-zerodha-status'],
     queryFn: getZerodhaStatus,
@@ -98,6 +164,19 @@ export default function AlgoTrading() {
       setSelectedStrategyId(strategies[0].id);
     }
   }, [selectedStrategyId, strategies]);
+
+  useEffect(() => {
+    if (!controls.length && !creatingControl) {
+      setCreatingControl(true);
+      base44.entities.AlgoControl
+        .create(createAlgoControlDraft())
+        .then(() => queryClient.invalidateQueries({ queryKey: ['algo-controls'] }))
+        .catch(() => {
+          toast.error('Unable to initialize algo controls.');
+        })
+        .finally(() => setCreatingControl(false));
+    }
+  }, [controls.length, creatingControl, queryClient]);
 
   const selectedStrategy = useMemo(
     () => strategies.find((item) => item.id === selectedStrategyId) || strategies[0] || null,
@@ -112,6 +191,21 @@ export default function AlgoTrading() {
     () => [...new Set(stocks.map((item) => item.symbol).filter(Boolean))].sort(),
     [stocks],
   );
+  const globalControl = controls[0] || null;
+  const selectedScheduler = useMemo(
+    () => schedulers.find((item) => item.strategy_id === selectedStrategy?.id) || null,
+    [schedulers, selectedStrategy?.id],
+  );
+  const selectedIntents = useMemo(() => {
+    if (!selectedStrategy?.id) return orderIntents;
+    return orderIntents.filter((item) => item.strategy_id === selectedStrategy.id);
+  }, [orderIntents, selectedStrategy?.id]);
+  const pendingIntentCount = selectedIntents.filter((item) => item.status === 'paper_ready' || item.status === 'live_ready').length;
+  const nextScheduledRun = selectedScheduler ? computeNextScheduledRun(selectedScheduler) : null;
+
+  const templateLabel = ALGO_STRATEGY_TEMPLATES.find((item) => item.id === selectedStrategy?.template_id)?.name || 'Strategy';
+  const connected = Boolean(zerodhaStatus?.connected);
+  const configured = Boolean(zerodhaStatus?.configured);
 
   const createStrategy = async () => {
     try {
@@ -168,9 +262,87 @@ export default function AlgoTrading() {
     }
   };
 
-  const templateLabel = ALGO_STRATEGY_TEMPLATES.find((item) => item.id === selectedStrategy?.template_id)?.name || 'Strategy';
-  const connected = Boolean(zerodhaStatus?.connected);
-  const configured = Boolean(zerodhaStatus?.configured);
+  const updateGlobalControl = async (updates) => {
+    const current = globalControl || createAlgoControlDraft();
+    if (current.id) {
+      await base44.entities.AlgoControl.update(current.id, updates);
+    } else {
+      await base44.entities.AlgoControl.create({ ...current, ...updates });
+    }
+    await queryClient.invalidateQueries({ queryKey: ['algo-controls'] });
+  };
+
+  const ensureScheduler = async () => {
+    if (!selectedStrategy) {
+      toast.error('Pick a strategy first.');
+      return null;
+    }
+    if (selectedScheduler) return selectedScheduler;
+    const created = await base44.entities.AlgoScheduler.create(createAlgoSchedulerDraft(selectedStrategy));
+    await queryClient.invalidateQueries({ queryKey: ['algo-schedulers'] });
+    toast.success(`Scheduler created for ${selectedStrategy.name}.`);
+    return created;
+  };
+
+  const updateScheduler = async (updates) => {
+    try {
+      const scheduler = await ensureScheduler();
+      if (!scheduler?.id) return;
+      await base44.entities.AlgoScheduler.update(scheduler.id, updates);
+      await queryClient.invalidateQueries({ queryKey: ['algo-schedulers'] });
+    } catch (error) {
+      toast.error(error.message || 'Unable to update scheduler.');
+    }
+  };
+
+  const queueOrder = async () => {
+    if (!selectedStrategy) {
+      toast.error('Select a strategy first.');
+      return;
+    }
+    if (!latestRun) {
+      toast.error('Run a backtest before creating an order intent.');
+      return;
+    }
+
+    setQueueingIntent(true);
+    try {
+      const history = await getLiveMarketHistory(selectedStrategy.symbol, selectedStrategy.range || '1y', selectedStrategy.interval || '1d');
+      const latestPoint = history.points?.[history.points.length - 1];
+      const referencePrice = Number(latestPoint?.close || getLatestReferencePrice(latestRun) || 0);
+      const intent = buildPaperOrderIntent({
+        strategy: selectedStrategy,
+        latestRun,
+        currentPrice: referencePrice,
+        brokerConnected: connected,
+        killSwitch: Boolean(globalControl?.kill_switch),
+        liveExecutionEnabled: Boolean(globalControl?.live_execution_enabled),
+      });
+
+      if (!intent) {
+        toast.error('Latest run does not contain a tradeable signal yet.');
+        return;
+      }
+
+      await base44.entities.AlgoOrderIntent.create({
+        ...intent,
+        latest_price_source: history.source || 'broker',
+        latest_run_id: latestRun.id,
+      });
+      await queryClient.invalidateQueries({ queryKey: ['algo-order-intents'] });
+      toast.success('Order intent added to the paper blotter.');
+    } catch (error) {
+      toast.error(error.message || 'Unable to queue order intent.');
+    } finally {
+      setQueueingIntent(false);
+    }
+  };
+
+  const updateIntentStatus = async (intent, status) => {
+    await base44.entities.AlgoOrderIntent.update(intent.id, { status });
+    await queryClient.invalidateQueries({ queryKey: ['algo-order-intents'] });
+    toast.success(`${intent.symbol} marked ${status}.`);
+  };
 
   return (
     <div className="space-y-6">
@@ -180,7 +352,8 @@ export default function AlgoTrading() {
             <p className="text-xs uppercase tracking-[0.28em] text-cyan-200/80">Mini Algo Trading System</p>
             <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white">Algo Trading</h1>
             <p className="mt-3 text-base leading-7 text-slate-100/90">
-              Architecture-first trading workspace built around Zerodha Kite Connect: broker auth on the backend, event-driven strategy logic, risk gating, and paper/live execution readiness in one operator screen.
+              Architecture-first trading workspace built around Zerodha Kite Connect: broker auth on the backend, event-driven strategy logic,
+              risk gating, scheduler orchestration, and paper/live execution controls in one operator screen.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -194,7 +367,7 @@ export default function AlgoTrading() {
         </div>
       </section>
 
-      <Section title="Reference Architecture" subtitle="Mapped from Zerodha’s remote-backend requirement and event-driven trading-system patterns.">
+      <Section title="Reference Architecture" subtitle="Mapped from Zerodha's remote-backend requirement and event-driven trading-system patterns.">
         <div className="grid gap-4 xl:grid-cols-5">
           {ALGO_ARCHITECTURE_BLOCKS.map((block, index) => (
             <div key={block.title} className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
@@ -203,7 +376,7 @@ export default function AlgoTrading() {
               <p className="mt-2 text-sm text-slate-400">{block.subtitle}</p>
               <div className="mt-4 space-y-2 text-sm text-slate-300">
                 {block.points.map((point) => (
-                  <p key={point}>• {point}</p>
+                  <p key={point}>- {point}</p>
                 ))}
               </div>
             </div>
@@ -220,7 +393,7 @@ export default function AlgoTrading() {
       </Section>
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <Section title="System Readiness" subtitle="Broker, backend, and operating guardrails before any strategy runs.">
+        <Section title="System Readiness" subtitle="Broker, backend, scheduler, and operating guardrails before any strategy runs.">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <ReadinessCard
               label="Broker Auth"
@@ -228,36 +401,21 @@ export default function AlgoTrading() {
               note={connected ? 'Kite session available for execution data.' : configured ? 'Credentials exist but user session is not active.' : 'Set Zerodha credentials on backend first.'}
               tone={connected ? 'emerald' : configured ? 'amber' : 'rose'}
             />
-            <ReadinessCard
-              label="Callback Route"
-              value={connected ? 'Healthy' : 'Configured'}
-              note={redirectUrl}
-              tone="cyan"
-            />
+            <ReadinessCard label="Callback Route" value={connected ? 'Healthy' : 'Configured'} note={redirectUrl} tone="cyan" />
             <ReadinessCard
               label="Execution Mode"
-              value="Paper-first"
-              note="Strategies can be drafted, backtested, and promoted to live-ready status after broker/risk checks."
-              tone="slate"
+              value={globalControl?.live_execution_enabled ? 'Live armed' : 'Paper-first'}
+              note={globalControl?.live_execution_enabled ? 'Live order intents can route after the kill switch check.' : 'Strategies remain paper-safe until the operator explicitly enables live execution.'}
+              tone={globalControl?.live_execution_enabled ? 'amber' : 'slate'}
             />
             <ReadinessCard
-              label="Risk Gate"
-              value="Mandatory"
-              note="Every strategy carries capital and risk-per-trade limits before execution intent."
-              tone="amber"
+              label="Kill Switch"
+              value={globalControl?.kill_switch ? 'Engaged' : 'Released'}
+              note={globalControl?.kill_switch ? 'All live order routing is currently blocked.' : 'Live order intents may route if other checks pass.'}
+              tone={globalControl?.kill_switch ? 'rose' : 'emerald'}
             />
-            <ReadinessCard
-              label="Strategy Runtime"
-              value={`${strategies.length} loaded`}
-              note="Saved strategies sync into the same operator view across web and Android."
-              tone="slate"
-            />
-            <ReadinessCard
-              label="Observability"
-              value={`${runs.length} runs`}
-              note="Each run stores summary metrics and recent trades for audit and tuning."
-              tone="slate"
-            />
+            <ReadinessCard label="Strategy Runtime" value={`${strategies.length} loaded`} note="Saved strategies share the same operator view across web and Android." tone="slate" />
+            <ReadinessCard label="Observability" value={`${runs.length} runs / ${orderIntents.length} intents`} note="Every run and intent is journaled for audit and tuning." tone="slate" />
           </div>
         </Section>
 
@@ -299,7 +457,9 @@ export default function AlgoTrading() {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-lg font-semibold text-white">{strategy.name}</p>
-                      <p className="mt-1 text-sm text-slate-400">{strategy.symbol} • {strategy.interval?.toUpperCase()} • {strategy.range?.toUpperCase()}</p>
+                      <p className="mt-1 text-sm text-slate-400">
+                        {strategy.symbol} | {String(strategy.interval || '').toUpperCase()} | {String(strategy.range || '').toUpperCase()}
+                      </p>
                     </div>
                     <Badge className={`rounded-full ${strategy.mode === 'live' ? 'bg-rose-400/15 text-rose-100' : 'bg-emerald-400/15 text-emerald-100'}`}>
                       {strategy.mode}
@@ -349,7 +509,178 @@ export default function AlgoTrading() {
       </Section>
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <Section title="Selected Strategy Metrics" subtitle={selectedStrategy ? `${selectedStrategy.name} • ${templateLabel}` : 'Pick a strategy from the control board.'}>
+        <Section title="Execution Controls" subtitle="Global kill switch, live-routing gate, and default operating limits.">
+          <div className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-white">Global kill switch</p>
+                    <p className="mt-2 text-sm text-slate-400">Keep this on while tuning strategies. Live intents stay blocked until you release it.</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      void updateGlobalControl({ kill_switch: !globalControl?.kill_switch });
+                    }}
+                    className="rounded-xl border-white/10 bg-white/5 text-white hover:bg-white/10"
+                  >
+                    {globalControl?.kill_switch ? 'On' : 'Off'}
+                  </Button>
+                </div>
+              </div>
+              <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-white">Enable live routing</p>
+                    <p className="mt-2 text-sm text-slate-400">Allows live-mode strategies to generate broker-ready intents after the kill switch and broker checks pass.</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      void updateGlobalControl({ live_execution_enabled: !globalControl?.live_execution_enabled });
+                    }}
+                    className="rounded-xl border-white/10 bg-white/5 text-white hover:bg-white/10"
+                  >
+                    {globalControl?.live_execution_enabled ? 'On' : 'Off'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-2">
+                <span className="text-sm text-slate-300">Max daily loss %</span>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={globalControl?.max_daily_loss_percent ?? 2}
+                  onChange={(event) => {
+                    void updateGlobalControl({ max_daily_loss_percent: Number(event.target.value || 0) });
+                  }}
+                  className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-sm text-slate-300">Max open positions</span>
+                <Input
+                  type="number"
+                  value={globalControl?.max_open_positions ?? 5}
+                  onChange={(event) => {
+                    void updateGlobalControl({ max_open_positions: Number(event.target.value || 0) });
+                  }}
+                  className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
+                />
+              </label>
+            </div>
+
+            <label className="space-y-2">
+              <span className="text-sm text-slate-300">Operator notes</span>
+              <Textarea
+                value={globalControl?.notes || ''}
+                onChange={(event) => {
+                  void updateGlobalControl({ notes: event.target.value });
+                }}
+                className="min-h-[90px] rounded-2xl border-white/10 bg-white/5 text-white"
+              />
+            </label>
+          </div>
+        </Section>
+
+        <Section title="Scheduler" subtitle={selectedStrategy ? `${selectedStrategy.name} automation policy` : 'Pick a strategy to attach a scheduler.'}>
+          {selectedStrategy ? (
+            <div className="space-y-4">
+              <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-white">{summarizeScheduler(selectedScheduler)}</p>
+                    <p className="mt-2 text-sm text-slate-400">
+                      Next run {nextScheduledRun ? formatDateTime(nextScheduledRun) : '--'} | Status {selectedScheduler?.status || 'not created'}
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => {
+                      void ensureScheduler();
+                    }}
+                    variant="outline"
+                    className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"
+                  >
+                    <Clock3 className="h-4 w-4" />
+                    {selectedScheduler ? 'Refresh schedule' : 'Create schedule'}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-sm text-slate-300">Frequency</span>
+                  <Select
+                    value={selectedScheduler?.frequency || 'market_open'}
+                    onValueChange={(value) => {
+                      void updateScheduler({ frequency: value });
+                    }}
+                  >
+                    <SelectTrigger className="h-11 rounded-2xl border-white/10 bg-white/5 text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="market_open">Market open</SelectItem>
+                      <SelectItem value="hourly">Hourly</SelectItem>
+                      <SelectItem value="weekly">Weekly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </label>
+
+                <label className="space-y-2">
+                  <span className="text-sm text-slate-300">Run time</span>
+                  <Input
+                    type="time"
+                    value={selectedScheduler?.run_time || '09:20'}
+                    onChange={(event) => {
+                      void updateScheduler({ run_time: event.target.value });
+                    }}
+                    className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
+                  />
+                </label>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={() => {
+                    void updateScheduler({ status: selectedScheduler?.status === 'active' ? 'paused' : 'active' });
+                  }}
+                  className="rounded-2xl bg-cyan-300 text-slate-950 hover:bg-cyan-200"
+                >
+                  {selectedScheduler?.status === 'active' ? <Square className="h-4 w-4" /> : <Rocket className="h-4 w-4" />}
+                  {selectedScheduler?.status === 'active' ? 'Pause scheduler' : 'Activate scheduler'}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (selectedStrategy) {
+                      void runBacktest(selectedStrategy);
+                    }
+                  }}
+                  disabled={!selectedStrategy || runningId === selectedStrategy.id}
+                  className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"
+                >
+                  <Play className="h-4 w-4" />
+                  Run now
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-[24px] border border-dashed border-white/10 bg-white/[0.03] p-8 text-center text-slate-400">
+              Select a strategy to configure auto-run behavior.
+            </div>
+          )}
+        </Section>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <Section title="Selected Strategy Metrics" subtitle={selectedStrategy ? `${selectedStrategy.name} | ${templateLabel}` : 'Pick a strategy from the control board.'}>
           {selectedStrategy ? (
             <div className="space-y-5">
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -357,12 +688,35 @@ export default function AlgoTrading() {
                 <StrategyMetric label="Capital" value={formatCurrency(selectedStrategy.capital || 0)} note={`Risk per trade ${selectedStrategy.risk_percent}%`} />
                 <StrategyMetric label="Broker Mode" value={selectedStrategy.mode} note={connected ? 'Broker session is available.' : 'Keep this in paper mode until broker is connected.'} />
                 <StrategyMetric label="Trades" value={latestRun ? String(latestRun.summary?.tradeCount || 0) : '--'} note="From the latest recorded backtest" />
-                <StrategyMetric label="Net Return" value={latestRun ? formatPercent(latestRun.summary?.totalReturnPercent || 0) : '--'} note={latestRun ? `${formatCurrency(latestRun.summary?.startCapital || 0)} → ${formatCurrency(latestRun.summary?.endCapital || 0)}` : 'Run a backtest to populate'} />
-                <StrategyMetric label="Max Drawdown" value={latestRun ? formatPercent(-(latestRun.summary?.maxDrawdownPercent || 0)) : '--'} note={latestRun ? `Win rate ${formatPercent(latestRun.summary?.winRate || 0)}` : 'Drawdown from the equity curve'} />
+                <StrategyMetric
+                  label="Net Return"
+                  value={latestRun ? formatPercent(latestRun.summary?.totalReturnPercent || 0) : '--'}
+                  note={latestRun ? `${formatCurrency(latestRun.summary?.startCapital || 0)} -> ${formatCurrency(latestRun.summary?.endCapital || 0)}` : 'Run a backtest to populate'}
+                />
+                <StrategyMetric
+                  label="Max Drawdown"
+                  value={latestRun ? formatPercent(-(latestRun.summary?.maxDrawdownPercent || 0)) : '--'}
+                  note={latestRun ? `Win rate ${formatPercent(latestRun.summary?.winRate || 0)}` : 'Drawdown from the equity curve'}
+                />
               </div>
 
               <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
-                <p className="text-sm font-medium text-white">Execution settings</p>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-white">Execution settings</p>
+                    <p className="mt-2 text-sm text-slate-400">Promote the latest signal into the paper blotter or broker-ready queue.</p>
+                  </div>
+                  <Button
+                    onClick={() => {
+                      void queueOrder();
+                    }}
+                    disabled={!selectedStrategy || !latestRun || queueingIntent}
+                    className="rounded-2xl bg-amber-300 text-slate-950 hover:bg-amber-200"
+                  >
+                    {queueingIntent ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ClipboardList className="h-4 w-4" />}
+                    Queue order intent
+                  </Button>
+                </div>
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
                   {Object.entries(selectedStrategy.params || {}).map(([key, value]) => (
                     <div key={key} className="rounded-2xl border border-white/8 bg-[#111c2c] px-4 py-3">
@@ -387,7 +741,9 @@ export default function AlgoTrading() {
                 <div className="flex flex-wrap items-center gap-3">
                   <Badge className="rounded-full bg-cyan-300/15 text-cyan-100">{latestRun.mode}</Badge>
                   <Badge className="rounded-full bg-white/10 text-slate-100">{latestRun.source}</Badge>
-                  <span className="text-sm text-slate-400">{latestRun.interval?.toUpperCase()} • {latestRun.range?.toUpperCase()}</span>
+                  <span className="text-sm text-slate-400">
+                    {String(latestRun.interval || '').toUpperCase()} | {String(latestRun.range || '').toUpperCase()}
+                  </span>
                 </div>
                 <p className="mt-3 text-sm text-slate-300">{latestRun.summary?.lastSignal || 'No recent signal'}</p>
               </div>
@@ -395,14 +751,14 @@ export default function AlgoTrading() {
                 <div key={`${trade.entryDate}-${trade.exitDate}-${index}`} className="rounded-[22px] border border-white/8 bg-[#111c2c] px-4 py-4">
                   <div className="flex items-center justify-between gap-3">
                     <p className="font-medium text-white">
-                      {new Date(trade.entryDate).toLocaleDateString('en-IN')} → {new Date(trade.exitDate).toLocaleDateString('en-IN')}
+                      {new Date(trade.entryDate).toLocaleDateString('en-IN')}{' -> '}{new Date(trade.exitDate).toLocaleDateString('en-IN')}
                     </p>
                     <span className={`text-sm font-semibold ${trade.pnl >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
                       {trade.pnl >= 0 ? '+' : ''}{formatCurrency(trade.pnl)}
                     </span>
                   </div>
                   <p className="mt-2 text-sm text-slate-400">
-                    Entry {formatCurrency(trade.entryPrice)} • Exit {formatCurrency(trade.exitPrice)} • Return {formatPercent(trade.pnlPercent)}
+                    Entry {formatCurrency(trade.entryPrice)} | Exit {formatCurrency(trade.exitPrice)} | Return {formatPercent(trade.pnlPercent)}
                   </p>
                 </div>
               )) : (
@@ -419,13 +775,70 @@ export default function AlgoTrading() {
         </Section>
       </div>
 
-      <Section title="Operator Rules" subtitle="Guardrails carried from the architecture into this first build.">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <Section title="Paper Blotter and Order Intents" subtitle="Intent queue for paper fills first, with broker-ready routing only after operator approval.">
+        {selectedIntents.length ? (
+          <div className="space-y-3">
+            <div className="grid gap-4 md:grid-cols-3">
+              <StrategyMetric label="Open intents" value={String(pendingIntentCount)} note="Ready or blocked orders waiting on the operator workflow." />
+              <StrategyMetric label="Selected strategy" value={selectedStrategy?.name || '--'} note={selectedStrategy ? `${selectedStrategy.symbol} in ${selectedStrategy.mode} mode` : 'Pick a strategy from the board'} />
+              <StrategyMetric label="Route policy" value={globalControl?.kill_switch ? 'Blocked' : globalControl?.live_execution_enabled ? 'Paper + live-ready' : 'Paper only'} note="Kill switch and live-routing gate decide the final route." />
+            </div>
+            {selectedIntents.map((intent) => (
+              <div key={intent.id} className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-lg font-semibold text-white">{intent.symbol} {intent.side}</p>
+                    <p className="mt-2 text-sm text-slate-400">
+                      Qty {intent.quantity} | Trigger {formatCurrency(intent.trigger_price || 0)} | Notional {formatCurrency(intent.notional || 0)}
+                    </p>
+                    <p className="mt-2 text-sm text-slate-400">{intent.reason}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge className="rounded-full bg-white/10 text-slate-100">{intent.route}</Badge>
+                    <Badge className={`rounded-full ${intent.status === 'blocked' ? 'bg-rose-400/15 text-rose-100' : intent.status === 'filled' ? 'bg-emerald-400/15 text-emerald-100' : 'bg-cyan-300/15 text-cyan-100'}`}>
+                      {intent.status}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      void updateIntentStatus(intent, 'filled');
+                    }}
+                    className="rounded-xl bg-emerald-400/90 text-slate-950 hover:bg-emerald-300"
+                  >
+                    Mark filled
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      void updateIntentStatus(intent, 'cancelled');
+                    }}
+                    className="rounded-xl border-white/10 bg-white/5 text-white hover:bg-white/10"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-[24px] border border-dashed border-white/10 bg-white/[0.03] p-8 text-center text-slate-400">
+            No paper order intents yet. Run a backtest and queue the latest signal from the selected strategy.
+          </div>
+        )}
+      </Section>
+
+      <Section title="Operator Rules" subtitle="Guardrails carried from the architecture into this build.">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           {[
             { icon: ShieldCheck, title: 'Kill switch first', text: 'Live activation is separated from strategy creation so accidental execution is harder.' },
-            { icon: Cpu, title: 'Event-driven core', text: 'Strategies are modeled as signal workers fed by broker history/ticks, not one giant loop.' },
+            { icon: Cpu, title: 'Event-driven core', text: 'Strategies are modeled as signal workers fed by broker history and future tick streams, not one giant loop.' },
             { icon: Waves, title: 'Data before action', text: 'Warm-up candles and benchmark history are fetched before a run is judged useful.' },
-            { icon: Cable, title: 'Broker adapter boundary', text: 'Zerodha auth/status stays in a separate adapter layer from strategy logic.' },
+            { icon: Cable, title: 'Broker adapter boundary', text: 'Zerodha auth and broker status stay in a separate adapter layer from strategy logic.' },
+            { icon: ShieldAlert, title: 'Paper blotter stage', text: 'Order intents are visible in a blotter before any real execution path is trusted.' },
           ].map((item) => (
             <div key={item.title} className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
               <item.icon className="h-5 w-5 text-amber-300" />

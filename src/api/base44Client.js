@@ -8,6 +8,9 @@ const STORAGE_KEYS = {
   watchlist: namespacedKey('portfolio_analyzer_watchlist'),
   algoStrategies: namespacedKey('portfolio_analyzer_algo_strategies'),
   algoRuns: namespacedKey('portfolio_analyzer_algo_runs'),
+  algoOrderIntents: namespacedKey('portfolio_analyzer_algo_order_intents'),
+  algoSchedulers: namespacedKey('portfolio_analyzer_algo_schedulers'),
+  algoControls: namespacedKey('portfolio_analyzer_algo_controls'),
   session: namespacedKey('portfolio_analyzer_session'),
   bootstrapped: namespacedKey('portfolio_analyzer_bootstrapped'),
 };
@@ -16,6 +19,9 @@ const CLOUD_ENTITY_KEYS = {
   [STORAGE_KEYS.watchlist]: 'watchlist',
   [STORAGE_KEYS.algoStrategies]: 'algo_strategies',
   [STORAGE_KEYS.algoRuns]: 'algo_runs',
+  [STORAGE_KEYS.algoOrderIntents]: 'algo_order_intents',
+  [STORAGE_KEYS.algoSchedulers]: 'algo_schedulers',
+  [STORAGE_KEYS.algoControls]: 'algo_controls',
 };
 
 const uploadedFiles = new Map();
@@ -498,6 +504,9 @@ export const base44 = {
     Watchlist: createEntityApi(STORAGE_KEYS.watchlist),
     AlgoStrategy: createEntityApi(STORAGE_KEYS.algoStrategies),
     AlgoRun: createEntityApi(STORAGE_KEYS.algoRuns),
+    AlgoOrderIntent: createEntityApi(STORAGE_KEYS.algoOrderIntents),
+    AlgoScheduler: createEntityApi(STORAGE_KEYS.algoSchedulers),
+    AlgoControl: createEntityApi(STORAGE_KEYS.algoControls),
   },
   integrations: {
     Core: {
