@@ -55,8 +55,9 @@ export function getZerodhaStatus() {
   return request('/api/zerodha/status');
 }
 
-export function getZerodhaLoginUrl() {
-  return request('/api/zerodha/login-url');
+export function getZerodhaLoginUrl(platform = 'web') {
+  const search = platform === 'native' ? '?platform=native' : '';
+  return request(`/api/zerodha/login-url${search}`);
 }
 
 export function getZerodhaHoldings() {

@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, Outlet, useLocation } from 'react-router-dom';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { BarChart3, Briefcase, Eye, LogOut, Shield, TrendingUp, UserCircle2 } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
 import GoogleSignInButton from '@/components/auth/GoogleSignInButton';
 import { useAuth } from '@/lib/AuthContext';
+import { getBrokerApiBase } from '@/lib/brokerClient';
 import { formatCurrency } from '@/lib/portfolioAnalytics';
 import { base44 } from '@/api/base44Client';
 
@@ -33,10 +36,11 @@ function NavLink({ item, active, onClick }) {
 
 export default function AppLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { user, isAuthenticated, googleConfigured, logout } = useAuth();
   const queryClient = useQueryClient();
   const [syncStatus, setSyncStatus] = useState(() => base44.sync.getStatus());
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+  const apiBaseUrl = getBrokerApiBase();
   const { data: indexPayload } = useQuery({
     queryKey: ['header-indices'],
     refetchInterval: 60000,
@@ -50,6 +54,41 @@ export default function AppLayout() {
   const hasDelayedIndices = indexItems.some((item) => item.delayed);
 
   useEffect(() => base44.sync.subscribe(setSyncStatus), []);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return undefined;
+
+    const handleNativeUrl = ({ url }) => {
+      if (!url) return;
+      let incoming;
+      try {
+        incoming = new URL(url);
+      } catch {
+        return;
+      }
+
+      if (incoming.protocol !== 'tickertap:' || incoming.hostname !== 'zerodha') {
+        return;
+      }
+
+      const next = new URLSearchParams();
+      next.set('broker', 'zerodha');
+      next.set('status', incoming.searchParams.get('status') || 'error');
+      const error = incoming.searchParams.get('error');
+      if (error) next.set('error', error);
+      navigate(`/Portfolio?${next.toString()}`, { replace: true });
+    };
+
+    let removeListener = () => {};
+    CapacitorApp.addListener('appUrlOpen', handleNativeUrl).then((listener) => {
+      removeListener = () => listener.remove();
+    });
+    CapacitorApp.getLaunchUrl().then((launchData) => {
+      if (launchData?.url) handleNativeUrl({ url: launchData.url });
+    });
+
+    return () => removeListener();
+  }, [navigate]);
 
   useEffect(() => {
     const handleSyncEvent = (event) => {

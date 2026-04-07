@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { Loader2, LogOut, RefreshCw, ShieldCheck, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -37,7 +38,7 @@ export default function BrokerSyncPanel({ currentStocks = [], onSynced }) {
 
   const connect = async () => {
     try {
-      const data = await getZerodhaLoginUrl();
+      const data = await getZerodhaLoginUrl(Capacitor.isNativePlatform() ? 'native' : 'web');
       window.location.assign(data.loginUrl);
     } catch (error) {
       toast.error(error.message);
@@ -107,6 +108,11 @@ export default function BrokerSyncPanel({ currentStocks = [], onSynced }) {
           <p className="mt-2 text-sm leading-7 text-slate-400">
             Connect Kite Connect, fetch holdings and positions through the active backend, and merge them into the portfolio.
           </p>
+          {Capacitor.isNativePlatform() ? (
+            <p className="mt-2 text-sm leading-7 text-cyan-200/80">
+              Android login opens Zerodha in the browser and should return to the installed app automatically after approval.
+            </p>
+          ) : null}
         </div>
         <div className="rounded-2xl border border-emerald-300/15 bg-emerald-300/10 p-3 text-emerald-200">
           <Wallet className="h-5 w-5" />

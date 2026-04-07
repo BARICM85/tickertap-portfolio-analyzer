@@ -33,6 +33,8 @@ const API_SECRET = env.ZERODHA_API_SECRET || '';
 const FRONTEND_URL = env.ZERODHA_FRONTEND_URL || 'http://localhost:5173';
 const REDIRECT_URI = env.ZERODHA_REDIRECT_URI || `http://localhost:${PORT}/api/zerodha/callback`;
 const SESSION_PATH = resolve(projectRoot, env.ZERODHA_SESSION_PATH || 'server/.zerodha-session.json');
+const AUTH_CONTEXT_PATH = resolve(projectRoot, env.ZERODHA_AUTH_CONTEXT_PATH || 'server/.zerodha-auth-context.json');
+const NATIVE_REDIRECT_URL = env.ZERODHA_NATIVE_REDIRECT_URL || 'tickertap://zerodha/callback';
 const FMP_API_KEY = env.FMP_API_KEY || '';
 const FMP_API_BASE_URL = env.FMP_API_BASE_URL || 'https://financialmodelingprep.com/stable';
 const INSTRUMENTS_CACHE_PATH = resolve(projectRoot, 'server/.zerodha-instruments-cache.json');
@@ -76,6 +78,18 @@ async function writeSession(session) {
 
 async function clearSession() {
   clearFileSession();
+}
+
+function readAuthContext() {
+  return readJsonFile(AUTH_CONTEXT_PATH);
+}
+
+function writeAuthContext(context = {}) {
+  writeJsonFile(AUTH_CONTEXT_PATH, context);
+}
+
+function clearAuthContext() {
+  if (existsSync(AUTH_CONTEXT_PATH)) unlinkSync(AUTH_CONTEXT_PATH);
 }
 
 function readJsonFile(filePath) {
@@ -212,7 +226,15 @@ function getLoginUrl() {
   return base.toString();
 }
 
-function buildFrontendRedirect(status, error) {
+function buildFrontendRedirect(status, error, target = 'web') {
+  if (target === 'native') {
+    const url = new URL(NATIVE_REDIRECT_URL);
+    url.searchParams.set('broker', 'zerodha');
+    url.searchParams.set('status', status);
+    if (error) url.searchParams.set('error', error);
+    return url.toString();
+  }
+
   const url = new URL('/Portfolio', FRONTEND_URL);
   url.searchParams.set('broker', 'zerodha');
   url.searchParams.set('status', status);
@@ -1265,6 +1287,11 @@ const server = createServer(async (req, res) => {
       if (!API_KEY || !API_SECRET) {
         return sendJson(res, 400, { error: 'ZERODHA_API_KEY and ZERODHA_API_SECRET must be set in .env.' });
       }
+      const platform = url.searchParams.get('platform') === 'native' ? 'native' : 'web';
+      writeAuthContext({
+        platform,
+        created_at: new Date().toISOString(),
+      });
       return sendJson(res, 200, {
         loginUrl: getLoginUrl(),
         redirectUri: REDIRECT_URI,
@@ -1273,15 +1300,18 @@ const server = createServer(async (req, res) => {
 
     if (req.method === 'GET' && url.pathname === '/api/zerodha/callback') {
       const requestToken = url.searchParams.get('request_token');
+      const authContext = readAuthContext();
+      const redirectTarget = authContext?.platform === 'native' ? 'native' : 'web';
+      clearAuthContext();
       if (!requestToken) {
-        return redirect(res, buildFrontendRedirect('error', 'missing_request_token'));
+        return redirect(res, buildFrontendRedirect('error', 'missing_request_token', redirectTarget));
       }
 
       try {
         await exchangeRequestToken(requestToken);
-        return redirect(res, buildFrontendRedirect('connected'));
+        return redirect(res, buildFrontendRedirect('connected', null, redirectTarget));
       } catch (error) {
-        return redirect(res, buildFrontendRedirect('error', error.message));
+        return redirect(res, buildFrontendRedirect('error', error.message, redirectTarget));
       }
     }
 
