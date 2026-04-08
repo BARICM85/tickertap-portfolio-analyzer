@@ -1,6 +1,54 @@
 import { getBrokerApiBase } from '@/lib/brokerClient';
 
 const STOCK_CATALOG = {
+  NIFTY: {
+    name: 'NIFTY 50',
+    sector: 'Index',
+    exchange: 'NSE',
+    current_price: 22300,
+    beta: 1,
+    pe_ratio: 22.4,
+    market_cap: 'Index',
+    dividend_yield: 1.1,
+    day_change_percent: 0,
+    thesis: 'India large-cap benchmark used as the primary options and futures underlying.',
+  },
+  BANKNIFTY: {
+    name: 'NIFTY BANK',
+    sector: 'Index',
+    exchange: 'NSE',
+    current_price: 48200,
+    beta: 1.08,
+    pe_ratio: 18.5,
+    market_cap: 'Index',
+    dividend_yield: 0.9,
+    day_change_percent: 0,
+    thesis: 'Bank-heavy benchmark and one of the most active F&O underlyings in India.',
+  },
+  FINNIFTY: {
+    name: 'NIFTY FINANCIAL SERVICES',
+    sector: 'Index',
+    exchange: 'NSE',
+    current_price: 24000,
+    beta: 1.03,
+    pe_ratio: 19.4,
+    market_cap: 'Index',
+    dividend_yield: 0.9,
+    day_change_percent: 0,
+    thesis: 'Financial-services benchmark suited for index futures and options structure analysis.',
+  },
+  MIDCPNIFTY: {
+    name: 'NIFTY MID SELECT',
+    sector: 'Index',
+    exchange: 'NSE',
+    current_price: 12200,
+    beta: 1.12,
+    pe_ratio: 24.1,
+    market_cap: 'Index',
+    dividend_yield: 0.7,
+    day_change_percent: 0,
+    thesis: 'Midcap index underlying for higher-beta index derivatives tracking.',
+  },
   RELIANCE: {
     name: 'Reliance Industries',
     sector: 'Energy',
@@ -148,6 +196,7 @@ const STOCK_CATALOG = {
 };
 
 const SECTOR_BENCHMARKS = {
+  Index: { expected_return: 11, risk: 15 },
   Technology: { expected_return: 14, risk: 19 },
   Finance: { expected_return: 13, risk: 20 },
   Energy: { expected_return: 12, risk: 22 },

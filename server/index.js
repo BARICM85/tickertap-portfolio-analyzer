@@ -249,9 +249,25 @@ function normalizeQuoteSymbol(symbol = '') {
   return `${trimmed}.NS`;
 }
 
+const UNDERLYING_ALIAS_MAP = {
+  NIFTY: ['NIFTY', 'NIFTY50', 'NIFTY 50', '^NSEI'],
+  BANKNIFTY: ['BANKNIFTY', 'NIFTYBANK', 'BANK NIFTY', '^NSEBANK'],
+  FINNIFTY: ['FINNIFTY', 'NIFTY FIN SERVICE', 'NIFTY FINANCIAL SERVICES'],
+  MIDCPNIFTY: ['MIDCPNIFTY', 'MIDCAPNIFTY', 'NIFTY MID SELECT'],
+};
+
+function getUnderlyingAliases(symbol = '') {
+  const trimmed = symbol.trim().toUpperCase();
+  if (!trimmed) return [];
+  return [...new Set([trimmed, ...(UNDERLYING_ALIAS_MAP[trimmed] || [])])];
+}
+
 function buildYahooSymbolCandidates(symbol = '') {
   const trimmed = symbol.trim().toUpperCase();
   if (!trimmed) return [];
+  if (UNDERLYING_ALIAS_MAP[trimmed]) {
+    return [...new Set(getUnderlyingAliases(trimmed))];
+  }
   if (trimmed.startsWith('^')) return [trimmed];
   if (trimmed.includes('_')) return [trimmed, `${trimmed}.NS`];
   if (trimmed.includes('.')) return [trimmed];
@@ -635,11 +651,19 @@ async function resolveZerodhaInstrument(symbol = '', exchange = 'NSE') {
   if (!normalizedSymbol) return null;
 
   const instruments = await getZerodhaInstruments();
-  const exact = instruments.find((row) => row.tradingsymbol === normalizedSymbol && row.exchange === normalizedExchange);
+  const aliases = getUnderlyingAliases(normalizedSymbol);
+  const exact = instruments.find((row) => aliases.includes((row.tradingsymbol || '').toUpperCase()) && row.exchange === normalizedExchange);
   if (exact) return exact;
 
-  const alternate = instruments.find((row) => row.tradingsymbol === normalizedSymbol);
+  const alternate = instruments.find((row) => aliases.includes((row.tradingsymbol || '').toUpperCase()));
   return alternate || null;
+}
+
+function matchesDerivativeUnderlying(row, symbol = '') {
+  const aliases = getUnderlyingAliases(symbol);
+  const name = (row.name || '').toUpperCase();
+  const tradingsymbol = (row.tradingsymbol || '').toUpperCase();
+  return aliases.some((alias) => alias === name || tradingsymbol.startsWith(alias));
 }
 
 async function fetchZerodhaQuoteSnapshot(instrumentRefs = []) {
@@ -925,8 +949,7 @@ async function fetchZerodhaFuturesBoard(symbol, exchange = 'NSE') {
     .filter((row) => {
       const instrumentType = (row.instrument_type || '').toUpperCase();
       const rowExchange = (row.exchange || '').toUpperCase();
-      const name = (row.name || '').toUpperCase();
-      return rowExchange === 'NFO' && instrumentType === 'FUT' && name === uppercaseSymbol;
+      return rowExchange === 'NFO' && instrumentType === 'FUT' && matchesDerivativeUnderlying(row, uppercaseSymbol);
     })
     .map((row) => ({
       ...row,
@@ -943,7 +966,7 @@ async function fetchZerodhaFuturesBoard(symbol, exchange = 'NSE') {
 
   const quoteRefs = futuresRows.map((row) => `${row.exchange}:${row.tradingsymbol}`);
   const quotes = await fetchZerodhaQuoteSnapshot(quoteRefs);
-  const underlyingQuote = await fetchZerodhaQuote(uppercaseSymbol, exchange);
+  const underlyingQuote = await fetchLiveQuote(uppercaseSymbol);
 
   return {
     source: 'zerodha',
@@ -982,8 +1005,7 @@ async function fetchZerodhaOptionChain(symbol, exchange = 'NSE', expiry = '', st
   const optionRows = instruments.filter((row) => {
     const instrumentType = (row.instrument_type || '').toUpperCase();
     const rowExchange = (row.exchange || '').toUpperCase();
-    const name = (row.name || '').toUpperCase();
-    return rowExchange === 'NFO' && name === uppercaseSymbol && (instrumentType === 'CE' || instrumentType === 'PE');
+    return rowExchange === 'NFO' && matchesDerivativeUnderlying(row, uppercaseSymbol) && (instrumentType === 'CE' || instrumentType === 'PE');
   });
 
   if (!optionRows.length) {
@@ -1006,7 +1028,7 @@ async function fetchZerodhaOptionChain(symbol, exchange = 'NSE', expiry = '', st
     throw new Error(`No active expiry found for ${uppercaseSymbol}.`);
   }
 
-  const underlyingQuote = await fetchZerodhaQuote(uppercaseSymbol, exchange);
+  const underlyingQuote = await fetchLiveQuote(uppercaseSymbol);
   const spotPrice = underlyingQuote.price;
 
   const expiryOptions = optionRows
