@@ -209,6 +209,48 @@ async function syncCollectionInBackground(storageKey, localRows, existingContext
   }
 }
 
+async function syncAllCollections() {
+  const context = await getCloudContext();
+  if (!context) return cloneSyncState();
+
+  setSyncState({ mode: 'syncing', label: 'Syncing to cloud...' });
+  const changedKeys = [];
+
+  try {
+    for (const storageKey of Object.keys(CLOUD_ENTITY_KEYS)) {
+      const localRows = readCollection(storageKey);
+      const remoteRows = await readCloudRows(context, storageKey);
+
+      if (!remoteRows.length) {
+        if (localRows.length) {
+          await writeCloudRows(context, storageKey, localRows);
+        }
+        continue;
+      }
+
+      const mergedRows = mergeEntityRows(localRows, remoteRows);
+      if (!rowsMatch(localRows, mergedRows)) {
+        writeCollection(storageKey, mergedRows);
+        changedKeys.push(getEntityKey(storageKey));
+      }
+
+      if (!rowsMatch(remoteRows, mergedRows)) {
+        await writeCloudRows(context, storageKey, mergedRows);
+      }
+    }
+
+    if (changedKeys.length) {
+      notifyEntitySync(changedKeys);
+    }
+
+    setSyncState({ mode: 'active', label: 'Cloud sync active' });
+    return cloneSyncState();
+  } catch {
+    setSyncState({ mode: 'unavailable', label: 'Cloud sync unavailable' });
+    return cloneSyncState();
+  }
+}
+
 async function readEntityRows(storageKey) {
   const localRows = readCollection(storageKey);
   const context = await getCloudContext();
@@ -579,6 +621,9 @@ export const base44 = {
     async refreshStatus() {
       await getCloudContext();
       return cloneSyncState();
+    },
+    async syncNow() {
+      return syncAllCollections();
     },
   },
 };

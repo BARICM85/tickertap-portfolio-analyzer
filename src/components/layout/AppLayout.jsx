@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { BarChart3, Briefcase, Cpu, Eye, LogOut, Shield, TrendingUp, UserCircle2 } from 'lucide-react';
+import { BarChart3, Briefcase, Cpu, Eye, LogOut, RefreshCw, Shield, TrendingUp, UserCircle2 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
+import { toast } from 'sonner';
 import GoogleSignInButton from '@/components/auth/GoogleSignInButton';
 import { useAuth } from '@/lib/AuthContext';
 import { getBrokerApiBase } from '@/lib/brokerClient';
@@ -41,6 +42,7 @@ export default function AppLayout() {
   const { user, isAuthenticated, googleConfigured, logout } = useAuth();
   const queryClient = useQueryClient();
   const [syncStatus, setSyncStatus] = useState(() => base44.sync.getStatus());
+  const [manualSyncing, setManualSyncing] = useState(false);
   const apiBaseUrl = getBrokerApiBase();
   const { data: indexPayload } = useQuery({
     queryKey: ['header-indices'],
@@ -112,6 +114,21 @@ export default function AppLayout() {
     queryClient.invalidateQueries({ queryKey: ['watchlist'] });
   }, [queryClient, user?.id]);
 
+  const handleManualSync = async () => {
+    setManualSyncing(true);
+    try {
+      const nextStatus = await base44.sync.syncNow();
+      setSyncStatus(nextStatus);
+      queryClient.invalidateQueries({ queryKey: ['stocks'] });
+      queryClient.invalidateQueries({ queryKey: ['watchlist'] });
+      toast.success(nextStatus.mode === 'active' ? 'Cloud sync completed.' : nextStatus.label);
+    } catch (error) {
+      toast.error(error.message || 'Cloud sync failed.');
+    } finally {
+      setManualSyncing(false);
+    }
+  };
+
   const syncBadgeClassName = syncStatus.mode === 'active'
     ? 'border-emerald-400/20 bg-emerald-400/12 text-emerald-200'
     : syncStatus.mode === 'syncing'
@@ -173,6 +190,16 @@ export default function AppLayout() {
             <div className={`rounded-2xl border px-3 py-2 text-xs font-medium ${syncBadgeClassName}`}>
               {syncStatus.label}
             </div>
+            {isAuthenticated ? (
+              <button
+                onClick={handleManualSync}
+                disabled={manualSyncing || syncStatus.mode === 'local'}
+                className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${manualSyncing ? 'animate-spin' : ''}`} />
+                Sync now
+              </button>
+            ) : null}
             {accountCard}
           </div>
         </div>
@@ -182,6 +209,16 @@ export default function AppLayout() {
             <div className={`mb-2 inline-flex rounded-2xl border px-3 py-2 text-xs font-medium ${syncBadgeClassName}`}>
               {syncStatus.label}
             </div>
+            {isAuthenticated ? (
+              <button
+                onClick={handleManualSync}
+                disabled={manualSyncing || syncStatus.mode === 'local'}
+                className="mb-2 ml-2 inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${manualSyncing ? 'animate-spin' : ''}`} />
+                Sync now
+              </button>
+            ) : null}
             {accountCard ? <div className="mb-2">{accountCard}</div> : null}
             <div className="flex gap-2 overflow-x-auto">
             {NAV_ITEMS.map((item) => (
