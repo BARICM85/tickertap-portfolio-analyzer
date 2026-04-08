@@ -22,15 +22,15 @@ function Metric({ label, value, note }) {
 }
 
 function formatMaybePercent(value, digits = 1) {
-  return Number.isFinite(value) ? `${value >= 0 ? '+' : ''}${value.toFixed(digits)}%` : 'Unavailable';
+  return Number.isFinite(value) ? `${value >= 0 ? '+' : ''}${value.toFixed(digits)}%` : null;
 }
 
 function formatMaybeRatio(value, digits = 2) {
-  return Number.isFinite(value) ? value.toFixed(digits) : 'Unavailable';
+  return Number.isFinite(value) ? value.toFixed(digits) : null;
 }
 
 function formatMaybeCurrency(value) {
-  return Number.isFinite(value) ? formatCurrency(value) : 'Unavailable';
+  return Number.isFinite(value) ? formatCurrency(value) : null;
 }
 
 function unavailableNote(sourceLabel) {
@@ -38,7 +38,7 @@ function unavailableNote(sourceLabel) {
 }
 
 function SectionMetricGrid({ title, metrics }) {
-  const visibleMetrics = metrics.filter((metric) => metric && metric.value !== undefined && metric.value !== null);
+  const visibleMetrics = metrics.filter((metric) => metric && metric.value !== undefined && metric.value !== null && metric.value !== 'Unavailable');
   if (!visibleMetrics.length) return null;
 
   return (
@@ -210,7 +210,7 @@ export default function StockDetail() {
     },
     {
       label: 'Volume Strength',
-      value: advancedMetrics.technicals.volumeStrength.label,
+      value: advancedMetrics.technicals.volumeStrength.ratio ? advancedMetrics.technicals.volumeStrength.label : null,
       note: Number.isFinite(advancedMetrics.technicals.volumeStrength.ratio)
         ? `${advancedMetrics.technicals.volumeStrength.ratio.toFixed(2)}x 20-day average volume`
         : 'Needs more volume history',
@@ -219,11 +219,11 @@ export default function StockDetail() {
   const stockRiskMetrics = [
     { label: 'Sector Risk', value: advancedMetrics.stockSpecificRisk.sectorRisk, note: `${advancedMetrics.stockSpecificRisk.sector} sector profile` },
     { label: 'Portfolio Weight', value: formatMaybePercent(advancedMetrics.stockSpecificRisk.portfolioWeight), note: 'Position size inside your portfolio' },
-    { label: 'Management Quality', value: advancedMetrics.stockSpecificRisk.managementQuality || 'Unavailable', note: advancedMetrics.feedNotes.stockSpecificRisk.managementQuality || unavailableNote('Governance research') },
+    { label: 'Management Quality', value: advancedMetrics.stockSpecificRisk.managementQuality || null, note: advancedMetrics.feedNotes.stockSpecificRisk.managementQuality || unavailableNote('Governance research') },
     { label: 'Promoter Holding', value: formatMaybePercent(advancedMetrics.stockSpecificRisk.promoterHoldingPercent), note: advancedMetrics.feedNotes.stockSpecificRisk.promoterHoldingPercent || unavailableNote('Shareholding pattern') },
     { label: 'Promoter Pledge', value: formatMaybePercent(advancedMetrics.stockSpecificRisk.promoterPledgePercent), note: advancedMetrics.feedNotes.stockSpecificRisk.promoterPledgePercent || unavailableNote('Pledge disclosure') },
-    { label: 'News Risk', value: advancedMetrics.stockSpecificRisk.latestNewsRisk || 'Unavailable', note: advancedMetrics.feedNotes.stockSpecificRisk.latestNewsRisk || unavailableNote('News / events') },
-    { label: 'Corporate Actions', value: advancedMetrics.stockSpecificRisk.corporateActions || 'Unavailable', note: advancedMetrics.feedNotes.stockSpecificRisk.corporateActions || unavailableNote('Corporate action feed') },
+    { label: 'News Risk', value: advancedMetrics.stockSpecificRisk.latestNewsRisk || null, note: advancedMetrics.feedNotes.stockSpecificRisk.latestNewsRisk || unavailableNote('News / events') },
+    { label: 'Corporate Actions', value: advancedMetrics.stockSpecificRisk.corporateActions || null, note: advancedMetrics.feedNotes.stockSpecificRisk.corporateActions || unavailableNote('Corporate action feed') },
   ];
 
   return (

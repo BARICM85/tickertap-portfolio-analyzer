@@ -28,12 +28,14 @@ export function getZerodhaRedirectUrl() {
 }
 
 async function request(path, options = {}) {
-  const { timeoutMs = 4500, ...fetchOptions } = options;
+  const brokerBase = getBrokerApiBase();
+  const defaultTimeoutMs = /onrender\.com/i.test(brokerBase) ? 15000 : 4500;
+  const { timeoutMs = defaultTimeoutMs, ...fetchOptions } = options;
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const timeoutId = controller
     ? window.setTimeout(() => controller.abort(), timeoutMs)
     : null;
-  const endpoint = `${getBrokerApiBase()}${path}`;
+  const endpoint = `${brokerBase}${path}`;
 
   try {
     const response = await fetch(endpoint, {
@@ -56,7 +58,7 @@ async function request(path, options = {}) {
       throw new Error(`Broker request timed out after ${Math.round(timeoutMs / 1000)}s. Check whether the backend is awake and reachable, then retry.`);
     }
     if (error instanceof TypeError) {
-      throw new Error(`Unable to reach broker backend at ${getBrokerApiBase() || endpoint}. Check network access or backend availability.`);
+      throw new Error(`Unable to reach broker backend at ${brokerBase || endpoint}. Check network access or backend availability.`);
     }
     throw error;
   } finally {
