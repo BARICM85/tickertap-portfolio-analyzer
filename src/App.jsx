@@ -11,6 +11,7 @@ import OptionChainPage from '@/pages/OptionChainPage';
 import Portfolio from '@/pages/Portfolio';
 import StockDetail from '@/pages/StockDetail';
 import RiskAnalysis from '@/pages/RiskAnalysis';
+import TradingTerminal from '@/pages/TradingTerminal';
 import WatchlistPage from '@/pages/WatchlistPage';
 
 function AuthenticatedApp() {
@@ -33,6 +34,7 @@ function AuthenticatedApp() {
         <Route path="/OptionChain" element={<OptionChainPage />} />
         <Route path="/StockDetail" element={<StockDetail />} />
         <Route path="/RiskAnalysis" element={<RiskAnalysis />} />
+        <Route path="/TradingTerminal" element={<TradingTerminal />} />
         <Route path="/AlgoTrading" element={<AlgoTrading />} />
         <Route path="/Watchlist" element={<WatchlistPage />} />
       </Route>

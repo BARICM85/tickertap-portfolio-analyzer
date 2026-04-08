@@ -911,6 +911,67 @@ function computeExpirySummaries(optionRows = [], spotPrice = 0) {
     .sort((left, right) => parseExpiryDate(left.expiry) - parseExpiryDate(right.expiry));
 }
 
+async function fetchZerodhaFuturesBoard(symbol, exchange = 'NSE') {
+  const uppercaseSymbol = symbol.trim().toUpperCase();
+  if (!uppercaseSymbol) {
+    throw new Error('Missing symbol for futures board.');
+  }
+
+  const instruments = await getZerodhaInstruments();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const futuresRows = instruments
+    .filter((row) => {
+      const instrumentType = (row.instrument_type || '').toUpperCase();
+      const rowExchange = (row.exchange || '').toUpperCase();
+      const name = (row.name || '').toUpperCase();
+      return rowExchange === 'NFO' && instrumentType === 'FUT' && name === uppercaseSymbol;
+    })
+    .map((row) => ({
+      ...row,
+      expiryDate: parseExpiryDate(row.expiry),
+      lot_size: Number(row.lot_size || 0),
+    }))
+    .filter((row) => row.expiryDate && row.expiryDate >= today)
+    .sort((left, right) => left.expiryDate - right.expiryDate)
+    .slice(0, 3);
+
+  if (!futuresRows.length) {
+    throw new Error(`No active Zerodha futures instruments found for ${uppercaseSymbol}.`);
+  }
+
+  const quoteRefs = futuresRows.map((row) => `${row.exchange}:${row.tradingsymbol}`);
+  const quotes = await fetchZerodhaQuoteSnapshot(quoteRefs);
+  const underlyingQuote = await fetchZerodhaQuote(uppercaseSymbol, exchange);
+
+  return {
+    source: 'zerodha',
+    symbol: uppercaseSymbol,
+    exchange,
+    spotPrice: underlyingQuote.price,
+    lotSize: Number(futuresRows[0]?.lot_size || 0),
+    rows: futuresRows.map((row) => {
+      const quote = quotes[`${row.exchange}:${row.tradingsymbol}`] || {};
+      const lastPrice = Number(quote.last_price || 0);
+      const basis = lastPrice - underlyingQuote.price;
+      const basisPercent = underlyingQuote.price ? (basis / underlyingQuote.price) * 100 : 0;
+      return {
+        tradingsymbol: row.tradingsymbol,
+        expiry: row.expiry,
+        instrumentToken: row.instrument_token,
+        lotSize: Number(row.lot_size || 0),
+        lastPrice,
+        change: Number(quote.net_change || 0),
+        oi: Number(quote.oi || 0),
+        volume: Number(quote.volume || 0),
+        basis,
+        basisPercent,
+      };
+    }),
+  };
+}
+
 async function fetchZerodhaOptionChain(symbol, exchange = 'NSE', expiry = '', strikeCount = 9) {
   const uppercaseSymbol = symbol.trim().toUpperCase();
   if (!uppercaseSymbol) {
@@ -1269,6 +1330,13 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 200, chain);
     }
 
+    if (req.method === 'GET' && url.pathname === '/api/futures/board') {
+      const symbol = url.searchParams.get('symbol') || '';
+      const exchange = url.searchParams.get('exchange') || 'NSE';
+      const board = await fetchZerodhaFuturesBoard(symbol, exchange);
+      return sendJson(res, 200, board);
+    }
+
     if (req.method === 'GET' && url.pathname === '/api/zerodha/status') {
       const session = await readSession();
       return sendJson(res, 200, {
@@ -1322,6 +1390,62 @@ const server = createServer(async (req, res) => {
 
     if (req.method === 'GET' && url.pathname === '/api/zerodha/positions') {
       const data = await kiteRequest('/portfolio/positions');
+      return sendJson(res, 200, data);
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/zerodha/orders') {
+      const data = await kiteRequest('/orders');
+      return sendJson(res, 200, data);
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/zerodha/orders') {
+      const rawBody = await readRequestBody(req);
+      const payload = JSON.parse(rawBody || '{}');
+      const tradingsymbol = String(payload.tradingsymbol || payload.contractSymbol || '').trim().toUpperCase();
+      const exchange = String(payload.exchange || 'NFO').trim().toUpperCase();
+      const transaction_type = String(payload.transaction_type || payload.side || '').trim().toUpperCase();
+      const order_type = String(payload.order_type || payload.orderType || 'MARKET').trim().toUpperCase();
+      const product = String(payload.product || 'NRML').trim().toUpperCase();
+      const validity = String(payload.validity || 'DAY').trim().toUpperCase();
+      const quantity = Number(payload.quantity || 0);
+      const price = Number(payload.price || 0);
+      const triggerPrice = Number(payload.trigger_price || payload.triggerPrice || 0);
+      const variety = String(payload.variety || 'regular').trim().toLowerCase();
+
+      if (!tradingsymbol || !transaction_type || !quantity) {
+        return sendJson(res, 400, { error: 'tradingsymbol, transaction_type, and quantity are required.' });
+      }
+
+      const body = new URLSearchParams({
+        exchange,
+        tradingsymbol,
+        transaction_type,
+        order_type,
+        product,
+        validity,
+        quantity: String(quantity),
+      });
+
+      if (order_type !== 'MARKET' && price > 0) {
+        body.set('price', String(price));
+      }
+      if ((order_type === 'SL' || order_type === 'SL-M') && triggerPrice > 0) {
+        body.set('trigger_price', String(triggerPrice));
+      }
+
+      const data = await kiteRequest(`/orders/${encodeURIComponent(variety)}`, {
+        method: 'POST',
+        body,
+      });
+      return sendJson(res, 200, {
+        success: true,
+        order_id: data?.data?.order_id || null,
+        response: data?.data || data,
+      });
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/zerodha/margins') {
+      const data = await kiteRequest('/user/margins');
       return sendJson(res, 200, data);
     }
 

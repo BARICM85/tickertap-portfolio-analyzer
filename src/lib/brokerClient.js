@@ -94,6 +94,21 @@ export function getZerodhaPositions() {
   return request('/api/zerodha/positions');
 }
 
+export function getZerodhaOrders() {
+  return request('/api/zerodha/orders');
+}
+
+export function getZerodhaMargins() {
+  return request('/api/zerodha/margins');
+}
+
+export function placeZerodhaOrder(payload) {
+  return request('/api/zerodha/orders', {
+    method: 'POST',
+    body: JSON.stringify(payload || {}),
+  });
+}
+
 export function disconnectZerodha() {
   return request('/api/zerodha/disconnect', { method: 'POST' });
 }
@@ -104,6 +119,20 @@ export function getLiveMarketQuote(symbol, options = {}) {
 
 export function getLiveMarketHistory(symbol, range = 'ytd', interval = '1d') {
   return request(`/api/market/history?symbol=${encodeURIComponent(symbol)}&range=${encodeURIComponent(range)}&interval=${encodeURIComponent(interval)}`);
+}
+
+export function getOptionChain(symbol, exchange = 'NSE', expiry = '', strikeCount = 12) {
+  return request(
+    `/api/options/chain?symbol=${encodeURIComponent(symbol)}&exchange=${encodeURIComponent(exchange)}&expiry=${encodeURIComponent(expiry)}&strikeCount=${encodeURIComponent(strikeCount)}`,
+    { timeoutMs: 10000 },
+  );
+}
+
+export function getFuturesBoard(symbol, exchange = 'NSE') {
+  return request(
+    `/api/futures/board?symbol=${encodeURIComponent(symbol)}&exchange=${encodeURIComponent(exchange)}`,
+    { timeoutMs: 10000 },
+  );
 }
 
 export function getCompanyIntelligence(symbol) {
