@@ -27,6 +27,16 @@ export function getZerodhaRedirectUrl() {
   return 'http://localhost:8000/api/zerodha/callback';
 }
 
+function describeHttpFailure(status, path) {
+  if (status === 521) {
+    return `Hosted backend unavailable (${status}) while requesting ${path}. Restart or redeploy the backend service and retry.`;
+  }
+  if (status === 502 || status === 503 || status === 504) {
+    return `Broker backend temporarily unavailable (${status}) while requesting ${path}. Retry after the service wakes up.`;
+  }
+  return null;
+}
+
 async function request(path, options = {}) {
   const brokerBase = getBrokerApiBase();
   const defaultTimeoutMs = /onrender\.com/i.test(brokerBase) ? 15000 : 4500;
@@ -49,7 +59,8 @@ async function request(path, options = {}) {
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(data?.error || 'Broker request failed.');
+      const statusMessage = describeHttpFailure(response.status, path);
+      throw new Error(data?.error || statusMessage || `Broker request failed (${response.status}).`);
     }
     return data;
   } catch (error) {

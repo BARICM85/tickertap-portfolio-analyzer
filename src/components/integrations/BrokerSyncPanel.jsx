@@ -19,6 +19,7 @@ export default function BrokerSyncPanel({ currentStocks = [], onSynced }) {
     () => new Set(currentStocks.map((stock) => stock.symbol?.toUpperCase())),
     [currentStocks],
   );
+  const backendUnavailable = /backend unavailable|unable to reach broker backend|timed out/i.test(status?.error || '');
 
   const loadStatus = async () => {
     setLoading(true);
@@ -26,7 +27,7 @@ export default function BrokerSyncPanel({ currentStocks = [], onSynced }) {
       const data = await getZerodhaStatus();
       setStatus(data);
     } catch (error) {
-      setStatus({ configured: false, connected: false, error: error.message });
+      setStatus({ configured: false, connected: false, unavailable: true, error: error.message });
     } finally {
       setLoading(false);
     }
@@ -129,7 +130,7 @@ export default function BrokerSyncPanel({ currentStocks = [], onSynced }) {
           <>
             <div className="flex flex-wrap items-center gap-3">
               <span className={`rounded-full px-3 py-1 text-xs font-medium ${status?.configured ? 'bg-cyan-400/15 text-cyan-200' : 'bg-rose-400/15 text-rose-200'}`}>
-                {status?.configured ? 'Configured' : 'Not configured'}
+                {backendUnavailable ? 'Backend unavailable' : status?.configured ? 'Configured' : 'Not configured'}
               </span>
               <span className={`rounded-full px-3 py-1 text-xs font-medium ${status?.connected ? 'bg-emerald-400/15 text-emerald-200' : 'bg-slate-400/15 text-slate-300'}`}>
                 {status?.connected ? 'Connected' : 'Disconnected'}
@@ -142,7 +143,9 @@ export default function BrokerSyncPanel({ currentStocks = [], onSynced }) {
             </div>
 
             <div className="mt-4 text-sm text-slate-400">
-              {status?.connected
+              {backendUnavailable
+                ? 'Hosted broker backend is currently unavailable. Restart or redeploy the backend service in Render, then retry Zerodha connect.'
+                : status?.connected
                 ? `Ready to sync live holdings. Current local portfolio already contains ${currentSymbols.size} symbols.`
                 : usesHostedBroker
                   ? 'Hosted backend is active. Add Zerodha credentials to the backend environment and then connect your account to fetch live broker data.'
@@ -155,7 +158,7 @@ export default function BrokerSyncPanel({ currentStocks = [], onSynced }) {
       </div>
 
       <div className="mt-5 flex flex-wrap gap-3">
-        <Button onClick={connect} disabled={loading || !status?.configured || status?.connected} className="rounded-2xl bg-amber-300 text-slate-950 hover:bg-amber-200">
+        <Button onClick={connect} disabled={loading || backendUnavailable || !status?.configured || status?.connected} className="rounded-2xl bg-amber-300 text-slate-950 hover:bg-amber-200">
           <ShieldCheck className="h-4 w-4" />
           Connect Zerodha
         </Button>
