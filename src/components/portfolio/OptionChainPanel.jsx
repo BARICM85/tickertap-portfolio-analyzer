@@ -70,45 +70,6 @@ function addGreeks(rows = [], spotPrice = 0) {
   });
 }
 
-function createStrategies(rows = [], lotSize = 1) {
-  const atm = rows.find((row) => row.atm) || rows[Math.floor(rows.length / 2)];
-  if (!atm) return [];
-
-  const higher = rows.find((row) => row.strike > atm.strike) || atm;
-  const lower = [...rows].reverse().find((row) => row.strike < atm.strike) || atm;
-
-  return [
-    {
-      name: 'Long Straddle',
-      legs: [`Buy ${atm.strike} CE`, `Buy ${atm.strike} PE`],
-      debit: (atm.callLtp + atm.putLtp) * lotSize,
-      maxProfit: 'Unlimited',
-      maxLoss: formatCurrency((atm.callLtp + atm.putLtp) * lotSize),
-    },
-    {
-      name: 'Long Strangle',
-      legs: [`Buy ${higher.strike} CE`, `Buy ${lower.strike} PE`],
-      debit: (higher.callLtp + lower.putLtp) * lotSize,
-      maxProfit: 'Unlimited',
-      maxLoss: formatCurrency((higher.callLtp + lower.putLtp) * lotSize),
-    },
-    {
-      name: 'Bull Call Spread',
-      legs: [`Buy ${atm.strike} CE`, `Sell ${higher.strike} CE`],
-      debit: Math.max((atm.callLtp - higher.callLtp) * lotSize, 0),
-      maxProfit: formatCurrency(Math.max(((higher.strike - atm.strike) - (atm.callLtp - higher.callLtp)) * lotSize, 0)),
-      maxLoss: formatCurrency(Math.max((atm.callLtp - higher.callLtp) * lotSize, 0)),
-    },
-    {
-      name: 'Bear Put Spread',
-      legs: [`Buy ${atm.strike} PE`, `Sell ${lower.strike} PE`],
-      debit: Math.max((atm.putLtp - lower.putLtp) * lotSize, 0),
-      maxProfit: formatCurrency(Math.max(((atm.strike - lower.strike) - (atm.putLtp - lower.putLtp)) * lotSize, 0)),
-      maxLoss: formatCurrency(Math.max((atm.putLtp - lower.putLtp) * lotSize, 0)),
-    },
-  ];
-}
-
 function OIBar({ value, maxValue, tone = 'emerald' }) {
   const width = maxValue > 0 ? `${Math.max((value / maxValue) * 100, 6)}%` : '0%';
   const color = tone === 'emerald' ? 'bg-emerald-400/80' : 'bg-rose-400/80';
@@ -203,8 +164,6 @@ export default function OptionChainPanel({ stock, onContractAction }) {
   const maxPutChangeOi = Math.max(...enrichedChain.map((item) => item.putChangeOi), 1);
   const summary = data?.summary;
   const expirySummaries = data?.expirySummaries || [];
-  const strategies = useMemo(() => createStrategies(enrichedChain, Number(data?.lotSize || 1)), [data?.lotSize, enrichedChain]);
-
   const handleSort = (field) => {
     if (sortBy === field) {
       setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'));
@@ -421,25 +380,6 @@ export default function OptionChainPanel({ stock, onContractAction }) {
         </div>
       ) : null}
 
-      <div className="mt-5 rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
-        <p className="text-sm font-medium text-white">Strategy Builder</p>
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {strategies.map((strategy) => (
-            <div key={strategy.name} className="rounded-2xl border border-white/8 bg-[#111821] px-4 py-4">
-              <p className="text-sm font-semibold text-white">{strategy.name}</p>
-              <div className="mt-3 space-y-1 text-sm text-slate-400">
-                {strategy.legs.map((leg) => (
-                  <p key={leg}>{leg}</p>
-                ))}
-              </div>
-              <p className="mt-4 text-sm text-slate-300">Cost <span className="font-semibold text-amber-300">{formatCurrency(strategy.debit)}</span></p>
-              <p className="mt-1 text-sm text-slate-300">Max profit <span className="font-semibold text-emerald-300">{strategy.maxProfit}</span></p>
-              <p className="mt-1 text-sm text-slate-300">Max loss <span className="font-semibold text-rose-300">{strategy.maxLoss}</span></p>
-            </div>
-          ))}
-        </div>
-      </div>
-
       <div className="mt-6 overflow-x-auto rounded-[28px] border border-white/8 bg-[#060b12]">
         <table className="min-w-full text-sm">
           <thead>
@@ -520,23 +460,6 @@ export default function OptionChainPanel({ stock, onContractAction }) {
                         >
                           Sell
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => onContractAction({
-                            segment: 'OPTIONS',
-                            optionType: 'CE',
-                            contractSymbol: row.call.tradingsymbol,
-                            price: row.callLtp,
-                            strike: row.strike,
-                            expiry: data?.expiry,
-                            lotSize: Number(data?.lotSize || 1),
-                            symbol: stock?.symbol,
-                            action: 'BUILD',
-                          })}
-                          className="rounded-lg bg-cyan-300/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-100 hover:bg-cyan-300/25"
-                        >
-                          Build
-                        </button>
                       </div>
                     ) : null}
                   </td>
@@ -585,23 +508,6 @@ export default function OptionChainPanel({ stock, onContractAction }) {
                           className="rounded-lg bg-rose-400/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-200 hover:bg-rose-400/25"
                         >
                           Sell
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onContractAction({
-                            segment: 'OPTIONS',
-                            optionType: 'PE',
-                            contractSymbol: row.put.tradingsymbol,
-                            price: row.putLtp,
-                            strike: row.strike,
-                            expiry: data?.expiry,
-                            lotSize: Number(data?.lotSize || 1),
-                            symbol: stock?.symbol,
-                            action: 'BUILD',
-                          })}
-                          className="rounded-lg bg-cyan-300/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-100 hover:bg-cyan-300/25"
-                        >
-                          Build
                         </button>
                       </div>
                     ) : null}

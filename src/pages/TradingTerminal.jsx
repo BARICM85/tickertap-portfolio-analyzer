@@ -5,7 +5,7 @@ import {
   Layers3,
   RefreshCw,
   ShieldCheck,
-  X,
+  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import StockAutocompleteInput from '@/components/shared/StockAutocompleteInput';
@@ -32,7 +32,6 @@ import {
   writeTerminalBlotter,
   writeTrackedSymbols,
 } from '@/lib/tradingTerminal';
-import { createBuilderLeg, summarizeBuilder } from '@/lib/optionBuilder';
 import {
   getFuturesBoard,
   getLiveMarketQuote,
@@ -83,58 +82,6 @@ function formatDateTime(value) {
   });
 }
 
-function formatMoneyValue(value, fallback = '--') {
-  if (value === null || value === undefined || !Number.isFinite(Number(value))) return fallback;
-  return formatCurrency(Number(value));
-}
-
-function PayoffChart({ points = [], spotPrice = 0 }) {
-  if (!points.length) {
-    return (
-      <div className="flex h-40 items-center justify-center rounded-[20px] border border-dashed border-white/10 bg-white/[0.03] text-sm text-slate-400">
-        Add option legs from the chain to see expiry payoff.
-      </div>
-    );
-  }
-
-  const width = 700;
-  const height = 220;
-  const padding = 24;
-  const pnlValues = points.map((point) => point.pnl);
-  const minPnl = Math.min(...pnlValues);
-  const maxPnl = Math.max(...pnlValues);
-  const minSpot = points[0].spot;
-  const maxSpot = points[points.length - 1].spot;
-  const pnlRange = maxPnl - minPnl || 1;
-  const spotRange = maxSpot - minSpot || 1;
-  const zeroY = padding + (((maxPnl - 0) / pnlRange) * (height - (padding * 2)));
-  const currentX = padding + (((spotPrice - minSpot) / spotRange) * (width - (padding * 2)));
-
-  const polyline = points.map((point, index) => {
-    const x = padding + ((index / Math.max(points.length - 1, 1)) * (width - (padding * 2)));
-    const y = padding + (((maxPnl - point.pnl) / pnlRange) * (height - (padding * 2)));
-    return `${x},${y}`;
-  }).join(' ');
-
-  return (
-    <div className="rounded-[22px] border border-white/8 bg-[#0b1522] p-4">
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-44 w-full">
-        <line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke="rgba(148,163,184,0.22)" strokeWidth="1" />
-        <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="rgba(148,163,184,0.22)" strokeWidth="1" />
-        <line x1={padding} y1={zeroY} x2={width - padding} y2={zeroY} stroke="rgba(244,244,245,0.28)" strokeDasharray="6 6" strokeWidth="1" />
-        <line x1={currentX} y1={padding} x2={currentX} y2={height - padding} stroke="rgba(34,211,238,0.45)" strokeDasharray="5 5" strokeWidth="1" />
-        <polyline fill="none" stroke="rgb(250 204 21)" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" points={polyline} />
-        <text x={padding} y={Math.max(zeroY - 8, 12)} fill="rgba(226,232,240,0.78)" fontSize="12">Expiry P/L zero</text>
-        <text x={Math.min(Math.max(currentX + 6, padding), width - 90)} y={padding + 14} fill="rgba(165,243,252,0.94)" fontSize="12">
-          Spot {spotPrice.toLocaleString('en-IN')}
-        </text>
-        <text x={padding} y={18} fill="rgba(74,222,128,0.92)" fontSize="12">Max {formatMoneyValue(maxPnl)}</text>
-        <text x={padding} y={height - 8} fill="rgba(251,113,133,0.92)" fontSize="12">Min {formatMoneyValue(minPnl)}</text>
-      </svg>
-    </div>
-  );
-}
-
 export default function TradingTerminal() {
   const [trackedSymbols, setTrackedSymbols] = useState(() => readTrackedSymbols());
   const [selectedSymbol, setSelectedSymbol] = useState(() => readTrackedSymbols()[0] || 'NIFTY');
@@ -146,7 +93,6 @@ export default function TradingTerminal() {
   const [refreshPulse, setRefreshPulse] = useState(0);
   const [confirmLiveOpen, setConfirmLiveOpen] = useState(false);
   const [placingLive, setPlacingLive] = useState(false);
-  const [builderLegs, setBuilderLegs] = useState([]);
 
   useEffect(() => {
     writeTrackedSymbols(trackedSymbols);
@@ -265,10 +211,6 @@ export default function TradingTerminal() {
   );
   const liveModeArmed = executionGuard.liveMode && executionGuard.armed && armCode.trim().toUpperCase() === 'LIVE';
   const executionModeLabel = executionGuard.liveMode ? 'Live routing selected' : 'Paper routing selected';
-  const builderSummary = useMemo(
-    () => summarizeBuilder(builderLegs, Number(optionOverview?.spotPrice || futuresBoard?.rows?.[0]?.lastPrice || stock.current_price || 0)),
-    [builderLegs, futuresBoard?.rows, optionOverview?.spotPrice, stock.current_price],
-  );
 
   const primeTicketFromContract = (contract, side = ticket.side) => {
     const lots = Number(contract.lotSize || ticket.quantity || 1);
@@ -285,6 +227,11 @@ export default function TradingTerminal() {
     };
     setTicket(nextTicket);
     return nextTicket;
+  };
+
+  const handleDeleteBlotterEntry = (entryId) => {
+    setBlotter((current) => current.filter((row) => row.id !== entryId));
+    toast.success('Blotter entry deleted.');
   };
 
   const handleTrackSymbol = (item) => {
@@ -329,22 +276,7 @@ export default function TradingTerminal() {
     }));
   };
 
-  const handleAddBuilderLeg = (contract, side) => {
-    const leg = createBuilderLeg({
-      ...contract,
-      symbol: contract.symbol || selectedSymbol,
-      underlying: selectedSymbol,
-    }, side, 1);
-    setBuilderLegs((current) => [...current, leg]);
-    toast.success(`${side} ${contract.contractSymbol} added to expiry builder.`);
-  };
-
   const handleOptionChainAction = (contract) => {
-    if (contract.action === 'BUILD') {
-      handleAddBuilderLeg(contract, 'BUY');
-      return;
-    }
-
     const nextTicket = primeTicketFromContract(contract, contract.action);
     if (!executionGuard.liveMode) {
       const entry = createBlotterEntry(nextTicket, {
@@ -363,18 +295,6 @@ export default function TradingTerminal() {
     }
 
     setConfirmLiveOpen(true);
-  };
-
-  const handleFuturesBuilder = (row) => {
-    handleAddBuilderLeg({
-      contractSymbol: row.tradingsymbol,
-      segment: 'FUTURES',
-      strike: Number(optionOverview?.spotPrice || row.lastPrice || stock.current_price || 0),
-      expiry: row.expiry,
-      price: row.lastPrice,
-      lotSize: Number(futuresBoard?.lotSize || 1),
-      symbol: selectedSymbol,
-    }, 'BUY');
   };
 
   const handlePlaceLiveOrder = async () => {
@@ -552,13 +472,6 @@ export default function TradingTerminal() {
                         className="mt-3 h-8 rounded-xl border-white/10 bg-white/5 text-xs text-white hover:bg-white/10"
                       >
                         Use in ticket
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => handleFuturesBuilder(row)}
-                        className="mt-2 h-8 rounded-xl border-cyan-300/20 bg-cyan-300/10 text-xs text-cyan-100 hover:bg-cyan-300/20"
-                      >
-                        Build payoff
                       </Button>
                     </div>
                   ))}
@@ -774,80 +687,6 @@ export default function TradingTerminal() {
             </div>
           </Section>
 
-          <Section title="Option builder" subtitle="Sensibull-style expiry planner using the current spot and selected chain contracts.">
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-2">
-              <Stat label="Current expiry P/L" value={formatMoneyValue(builderSummary.currentPnl)} note="Payoff at current spot if held to expiry" tone={builderSummary.currentPnl >= 0 ? 'emerald' : 'rose'} />
-              <Stat label="Max profit" value={builderSummary.maxProfit === null ? '--' : formatMoneyValue(builderSummary.maxProfit)} note="Across the displayed expiry payoff range" tone="emerald" />
-              <Stat label="Max loss" value={builderSummary.maxLoss === null ? '--' : formatMoneyValue(builderSummary.maxLoss)} note="Across the displayed expiry payoff range" tone="rose" />
-              <Stat label="Breakevens" value={builderSummary.breakevens?.length ? builderSummary.breakevens.map((value) => value.toLocaleString('en-IN')).join(', ') : '--'} note="Approximate expiry spot crossover levels" tone="cyan" />
-            </div>
-
-            <div className="mt-4">
-              <PayoffChart points={builderSummary.points} spotPrice={Number(optionOverview?.spotPrice || futuresBoard?.rows?.[0]?.lastPrice || stock.current_price || 0)} />
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {builderLegs.length ? builderLegs.map((leg) => (
-                <div key={leg.id} className="rounded-[20px] border border-white/8 bg-white/[0.03] px-4 py-3">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-white">{leg.side} {leg.contractSymbol}</p>
-                      <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-500">
-                        {leg.segment}{leg.optionType ? ` | ${leg.optionType}` : ''}{leg.expiry ? ` | ${leg.expiry}` : ''}
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      onClick={() => setBuilderLegs((current) => current.filter((row) => row.id !== leg.id))}
-                      className="h-9 rounded-xl text-slate-300 hover:bg-white/10 hover:text-white"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto_auto]">
-                    <div className="rounded-2xl border border-white/8 bg-[#101925] px-3 py-2 text-sm text-slate-300">
-                      Entry {formatMoneyValue(leg.entryPrice)} | Lot size {leg.lotSize}
-                    </div>
-                    <div className="rounded-2xl border border-white/8 bg-[#101925] px-3 py-2 text-sm text-slate-300">
-                      Strike {leg.strike ? leg.strike.toLocaleString('en-IN') : '--'}
-                    </div>
-                    <label className="flex items-center gap-2 rounded-2xl border border-white/8 bg-[#101925] px-3 py-2 text-sm text-slate-300">
-                      Lots
-                      <Input
-                        type="number"
-                        min="1"
-                        value={leg.lots}
-                        onChange={(event) => setBuilderLegs((current) => current.map((row) => (
-                          row.id === leg.id ? { ...row, lots: Math.max(1, Number(event.target.value || 1)) } : row
-                        )))}
-                        className="h-9 w-24 rounded-xl border-white/10 bg-white/5 text-white"
-                      />
-                    </label>
-                    <Button
-                      variant="outline"
-                      onClick={() => primeTicketFromContract({
-                        contractSymbol: leg.contractSymbol,
-                        segment: leg.segment,
-                        exchange: 'NFO',
-                        price: leg.entryPrice,
-                        expiry: leg.expiry,
-                        symbol: leg.underlying,
-                        lotSize: leg.lotSize * leg.lots,
-                      }, leg.side)}
-                      className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"
-                    >
-                      Load ticket
-                    </Button>
-                  </div>
-                </div>
-              )) : (
-                <div className="rounded-[20px] border border-dashed border-white/10 bg-white/[0.03] p-4 text-sm text-slate-400">
-                  Use the option chain Buy / Sell / Build buttons to add legs. The builder then shows expiry payoff, breakevens, and lot-scaled result.
-                </div>
-              )}
-            </div>
-          </Section>
-
           <Section title="Risk and funding" subtitle="Available cash, premium usage, exposure, and operator alerts.">
             <div className="space-y-3">
               <Stat label="Available" value={formatCurrency(margins.availableForTrade || 0)} note="Tradable cash after debits and premium" tone="emerald" />
@@ -912,9 +751,18 @@ export default function TradingTerminal() {
                     <div key={row.id} className="rounded-[20px] border border-white/8 bg-white/[0.03] px-4 py-3">
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-sm font-medium text-white">{formatTerminalOrder(row)}</p>
-                        <Badge className={`rounded-full ${row.state === 'Live-ready' ? 'bg-emerald-400/15 text-emerald-100' : 'bg-white/10 text-slate-100'}`}>
-                          {row.state}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge className={`rounded-full ${row.state === 'Live-ready' ? 'bg-emerald-400/15 text-emerald-100' : 'bg-white/10 text-slate-100'}`}>
+                            {row.state}
+                          </Badge>
+                          <Button
+                            variant="ghost"
+                            onClick={() => handleDeleteBlotterEntry(row.id)}
+                            className="h-8 rounded-xl px-2 text-slate-300 hover:bg-white/10 hover:text-white"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                       <p className="mt-2 text-xs text-slate-400">{formatDateTime(row.createdAt)} | {row.note || 'No operator note'}</p>
                     </div>
