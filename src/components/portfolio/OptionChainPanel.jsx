@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { namespacedKey } from '@/lib/appConfig';
+import { getBrokerApiBase } from '@/lib/brokerClient';
 import { formatCurrency } from '@/lib/portfolioAnalytics';
 
 function buildOptionChain(spotPrice = 0, strikeCount = 9) {
@@ -126,9 +127,9 @@ function heatColor(value, maxValue, tone = 'emerald') {
   return `rgba(245,158,11,${0.08 + (ratio * 0.24)})`;
 }
 
-export default function OptionChainPanel({ stock }) {
+export default function OptionChainPanel({ stock, onContractAction }) {
   const columnStorageKey = namespacedKey(`portfolio_analyzer_option_chain_columns_${stock?.symbol || 'default'}`);
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+  const apiBaseUrl = getBrokerApiBase();
   const [selectedExpiry, setSelectedExpiry] = useState('');
   const [strikeCount, setStrikeCount] = useState(12);
   const [sortBy, setSortBy] = useState('strike');
@@ -165,6 +166,8 @@ export default function OptionChainPanel({ stock }) {
     ? liveRows.map((row) => ({
         strike: row.strike,
         atm: row.atm,
+        call: row.call || null,
+        put: row.put || null,
         callLtp: Number(row.call?.ltp || 0),
         putLtp: Number(row.put?.ltp || 0),
         callOi: Number(row.call?.oi || 0),
@@ -478,14 +481,132 @@ export default function OptionChainPanel({ stock }) {
                 ) : null}
                 {visibleColumns.callOiBar ? <td className="px-4 py-3"><OIBar value={row.callOi} maxValue={maxCallOi} tone="emerald" /></td> : null}
                 {visibleColumns.callChangeOi ? <td className="px-4 py-3 text-right text-emerald-200" style={{ backgroundColor: heatColor(row.callChangeOi, maxCallChangeOi, 'emerald') }}>{row.callChangeOi.toLocaleString('en-IN')}</td> : null}
-                {visibleColumns.callLtp ? <td className="px-4 py-3 text-right text-white">{formatCurrency(row.callLtp)}</td> : null}
+                {visibleColumns.callLtp ? (
+                  <td className="px-4 py-3 text-right text-white">
+                    <div>{formatCurrency(row.callLtp)}</div>
+                    {onContractAction && row.call?.tradingsymbol ? (
+                      <div className="mt-2 flex justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => onContractAction({
+                            segment: 'OPTIONS',
+                            optionType: 'CE',
+                            contractSymbol: row.call.tradingsymbol,
+                            price: row.callLtp,
+                            strike: row.strike,
+                            expiry: data?.expiry,
+                            lotSize: Number(data?.lotSize || 1),
+                            symbol: stock?.symbol,
+                            action: 'BUY',
+                          })}
+                          className="rounded-lg bg-emerald-400/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-200 hover:bg-emerald-400/25"
+                        >
+                          Buy
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onContractAction({
+                            segment: 'OPTIONS',
+                            optionType: 'CE',
+                            contractSymbol: row.call.tradingsymbol,
+                            price: row.callLtp,
+                            strike: row.strike,
+                            expiry: data?.expiry,
+                            lotSize: Number(data?.lotSize || 1),
+                            symbol: stock?.symbol,
+                            action: 'SELL',
+                          })}
+                          className="rounded-lg bg-rose-400/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-200 hover:bg-rose-400/25"
+                        >
+                          Sell
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onContractAction({
+                            segment: 'OPTIONS',
+                            optionType: 'CE',
+                            contractSymbol: row.call.tradingsymbol,
+                            price: row.callLtp,
+                            strike: row.strike,
+                            expiry: data?.expiry,
+                            lotSize: Number(data?.lotSize || 1),
+                            symbol: stock?.symbol,
+                            action: 'BUILD',
+                          })}
+                          className="rounded-lg bg-cyan-300/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-100 hover:bg-cyan-300/25"
+                        >
+                          Build
+                        </button>
+                      </div>
+                    ) : null}
+                  </td>
+                ) : null}
                 {visibleColumns.callDelta ? <td className="px-4 py-3 text-right text-cyan-300">{row.callGreeks.delta}</td> : null}
                 {visibleColumns.callTheta ? <td className="px-4 py-3 text-right text-rose-300">{row.callGreeks.theta}</td> : null}
                 <td className="sticky left-0 z-10 px-4 py-3 text-center font-semibold text-amber-200" style={{ backgroundColor: row.atm ? 'rgba(245,158,11,0.18)' : index === activeRowIndex ? '#0b1320' : '#060b12' }}>{row.strike.toLocaleString('en-IN')}</td>
                 {visibleColumns.iv ? <td className="px-4 py-3 text-center text-slate-300">{row.iv}%</td> : null}
                 {visibleColumns.putDelta ? <td className="px-4 py-3 text-left text-cyan-300">{row.putGreeks.delta}</td> : null}
                 {visibleColumns.putTheta ? <td className="px-4 py-3 text-left text-rose-300">{row.putGreeks.theta}</td> : null}
-                {visibleColumns.putLtp ? <td className="px-4 py-3 text-left text-white">{formatCurrency(row.putLtp)}</td> : null}
+                {visibleColumns.putLtp ? (
+                  <td className="px-4 py-3 text-left text-white">
+                    <div>{formatCurrency(row.putLtp)}</div>
+                    {onContractAction && row.put?.tradingsymbol ? (
+                      <div className="mt-2 flex gap-1">
+                        <button
+                          type="button"
+                          onClick={() => onContractAction({
+                            segment: 'OPTIONS',
+                            optionType: 'PE',
+                            contractSymbol: row.put.tradingsymbol,
+                            price: row.putLtp,
+                            strike: row.strike,
+                            expiry: data?.expiry,
+                            lotSize: Number(data?.lotSize || 1),
+                            symbol: stock?.symbol,
+                            action: 'BUY',
+                          })}
+                          className="rounded-lg bg-emerald-400/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-200 hover:bg-emerald-400/25"
+                        >
+                          Buy
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onContractAction({
+                            segment: 'OPTIONS',
+                            optionType: 'PE',
+                            contractSymbol: row.put.tradingsymbol,
+                            price: row.putLtp,
+                            strike: row.strike,
+                            expiry: data?.expiry,
+                            lotSize: Number(data?.lotSize || 1),
+                            symbol: stock?.symbol,
+                            action: 'SELL',
+                          })}
+                          className="rounded-lg bg-rose-400/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-200 hover:bg-rose-400/25"
+                        >
+                          Sell
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onContractAction({
+                            segment: 'OPTIONS',
+                            optionType: 'PE',
+                            contractSymbol: row.put.tradingsymbol,
+                            price: row.putLtp,
+                            strike: row.strike,
+                            expiry: data?.expiry,
+                            lotSize: Number(data?.lotSize || 1),
+                            symbol: stock?.symbol,
+                            action: 'BUILD',
+                          })}
+                          className="rounded-lg bg-cyan-300/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-100 hover:bg-cyan-300/25"
+                        >
+                          Build
+                        </button>
+                      </div>
+                    ) : null}
+                  </td>
+                ) : null}
                 {visibleColumns.putChangeOi ? <td className="px-4 py-3 text-left text-rose-200" style={{ backgroundColor: heatColor(row.putChangeOi, maxPutChangeOi, 'rose') }}>{row.putChangeOi.toLocaleString('en-IN')}</td> : null}
                 {visibleColumns.putOiBar ? <td className="px-4 py-3"><OIBar value={row.putOi} maxValue={maxPutOi} tone="rose" /></td> : null}
                 {visibleColumns.putOi ? (
