@@ -262,8 +262,9 @@ function getUnderlyingAliases(symbol = '') {
   return [...new Set([trimmed, ...(UNDERLYING_ALIAS_MAP[trimmed] || [])])];
 }
 
-function buildYahooSymbolCandidates(symbol = '') {
+function buildYahooSymbolCandidates(symbol = '', exchange = 'NSE') {
   const trimmed = symbol.trim().toUpperCase();
+  const preferredExchange = exchange.trim().toUpperCase() || 'NSE';
   if (!trimmed) return [];
   if (UNDERLYING_ALIAS_MAP[trimmed]) {
     return [...new Set(getUnderlyingAliases(trimmed))];
@@ -272,9 +273,12 @@ function buildYahooSymbolCandidates(symbol = '') {
   if (trimmed.includes('_')) return [trimmed, `${trimmed}.NS`];
   if (trimmed.includes('.')) return [trimmed];
 
+  const preferredSuffix = preferredExchange === 'BSE' ? '.BO' : '.NS';
+  const alternateSuffix = preferredExchange === 'BSE' ? '.NS' : '.BO';
+
   return [...new Set([
-    `${trimmed}.NS`,
-    `${trimmed}.BO`,
+    `${trimmed}${preferredSuffix}`,
+    `${trimmed}${alternateSuffix}`,
     trimmed,
   ])];
 }
@@ -621,7 +625,7 @@ async function searchMarketSymbols(query = '', limit = 12) {
     const symbol = (row.tradingsymbol || '').toUpperCase();
     const name = (row.name || '').trim();
 
-    if (exchange !== 'NSE') continue;
+    if (!['NSE', 'BSE'].includes(exchange)) continue;
     if (instrumentType && instrumentType !== 'EQ') continue;
     if (!symbol) continue;
 
@@ -1106,15 +1110,15 @@ async function fetchZerodhaOptionChain(symbol, exchange = 'NSE', expiry = '', st
   };
 }
 
-async function fetchLiveQuote(symbol) {
+async function fetchLiveQuote(symbol, exchange = 'NSE') {
   try {
-    const zerodhaQuote = await fetchZerodhaQuote(symbol, 'NSE');
+    const zerodhaQuote = await fetchZerodhaQuote(symbol, exchange);
     return zerodhaQuote;
   } catch {
     // fall through to Yahoo fallback when Zerodha is disconnected or unavailable
   }
 
-  const candidates = buildYahooSymbolCandidates(symbol);
+  const candidates = buildYahooSymbolCandidates(symbol, exchange);
   if (candidates.length === 0) {
     throw new Error('Missing stock symbol.');
   }
@@ -1208,14 +1212,14 @@ async function fetchIndexQuotes() {
   };
 }
 
-async function fetchMarketHistory(symbol, range = '6mo', interval = '1d') {
+async function fetchMarketHistory(symbol, range = '6mo', interval = '1d', exchange = 'NSE') {
   try {
-    return await fetchZerodhaHistory(symbol, 'NSE', range, interval);
+    return await fetchZerodhaHistory(symbol, exchange, range, interval);
   } catch {
     // fall through to Yahoo fallback when Zerodha is disconnected or unavailable
   }
 
-  const candidates = buildYahooSymbolCandidates(symbol);
+  const candidates = buildYahooSymbolCandidates(symbol, exchange);
   if (candidates.length === 0) {
     throw new Error('Missing stock symbol.');
   }
@@ -1313,7 +1317,8 @@ const server = createServer(async (req, res) => {
 
     if (req.method === 'GET' && url.pathname === '/api/market/quote') {
       const symbol = url.searchParams.get('symbol') || '';
-      const quote = await fetchLiveQuote(symbol);
+      const exchange = url.searchParams.get('exchange') || 'NSE';
+      const quote = await fetchLiveQuote(symbol, exchange);
       return sendJson(res, 200, quote);
     }
 
@@ -1333,7 +1338,8 @@ const server = createServer(async (req, res) => {
       const symbol = url.searchParams.get('symbol') || '';
       const range = url.searchParams.get('range') || '6mo';
       const interval = url.searchParams.get('interval') || '1d';
-      const history = await fetchMarketHistory(symbol, range, interval);
+      const exchange = url.searchParams.get('exchange') || 'NSE';
+      const history = await fetchMarketHistory(symbol, range, interval, exchange);
       return sendJson(res, 200, history);
     }
 

@@ -14,9 +14,10 @@ export default function BrokerSyncPanel({ currentStocks = [], onSynced }) {
   const brokerApiBase = getBrokerApiBase();
   const redirectUrl = getZerodhaRedirectUrl();
   const usesHostedBroker = Boolean(brokerApiBase) && !/localhost|127\.0\.0\.1/i.test(brokerApiBase);
+  const getHoldingKey = (row) => `${String(row?.exchange || 'NSE').trim().toUpperCase()}:${String(row?.symbol || '').trim().toUpperCase()}`;
 
   const currentSymbols = useMemo(
-    () => new Set(currentStocks.map((stock) => stock.symbol?.toUpperCase())),
+    () => new Set(currentStocks.map((stock) => getHoldingKey(stock))),
     [currentStocks],
   );
   const backendUnavailable = /backend unavailable|unable to reach broker backend|timed out/i.test(status?.error || '');
@@ -60,7 +61,8 @@ export default function BrokerSyncPanel({ currentStocks = [], onSynced }) {
 
       for (const item of brokerHoldings) {
         const mapped = mapZerodhaHoldingToPortfolio(item);
-        const existing = currentStocks.find((stock) => stock.symbol?.toUpperCase() === mapped.symbol?.toUpperCase());
+        const mappedKey = getHoldingKey(mapped);
+        const existing = currentStocks.find((stock) => getHoldingKey(stock) === mappedKey);
 
         if (existing) {
           updatedCount += 1;

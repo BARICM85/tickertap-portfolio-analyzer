@@ -73,13 +73,16 @@ export default function Portfolio() {
     setRefreshingId('all');
     try {
       const { results, failures } = await getLiveMarketQuotes(
-        stocks.map((stock) => stock.symbol),
+        stocks.map((stock) => ({
+          symbol: stock.symbol,
+          exchange: stock.exchange || 'NSE',
+        })),
         { concurrency: 5, timeoutMs: 4000 },
       );
 
       const updates = new Map();
       stocks.forEach((stock) => {
-        const quote = results.get(String(stock.symbol || '').toUpperCase());
+        const quote = results.get(`${String(stock.exchange || 'NSE').trim().toUpperCase()}:${String(stock.symbol || '').trim().toUpperCase()}`);
         if (quote?.price) updates.set(stock.id, Number(quote.price));
       });
 
@@ -105,7 +108,10 @@ export default function Portfolio() {
   const refreshOne = async (stock) => {
     setRefreshingId(stock.id);
     try {
-      const quote = await getLiveMarketQuote(stock.symbol, { timeoutMs: 4000 });
+      const quote = await getLiveMarketQuote(stock.symbol, {
+        exchange: stock.exchange || 'NSE',
+        timeoutMs: 4000,
+      });
       await base44.entities.Stock.update(stock.id, { current_price: quote.price || stock.current_price });
       toast.success(`${stock.symbol} live price updated.`);
     } catch {

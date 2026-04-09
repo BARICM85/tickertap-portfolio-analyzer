@@ -114,11 +114,18 @@ export function disconnectZerodha() {
 }
 
 export function getLiveMarketQuote(symbol, options = {}) {
-  return request(`/api/market/quote?symbol=${encodeURIComponent(symbol)}`, options);
+  const exchange = options.exchange || 'NSE';
+  const { exchange: _exchange, ...requestOptions } = options;
+  return request(
+    `/api/market/quote?symbol=${encodeURIComponent(symbol)}&exchange=${encodeURIComponent(exchange)}`,
+    requestOptions,
+  );
 }
 
-export function getLiveMarketHistory(symbol, range = 'ytd', interval = '1d') {
-  return request(`/api/market/history?symbol=${encodeURIComponent(symbol)}&range=${encodeURIComponent(range)}&interval=${encodeURIComponent(interval)}`);
+export function getLiveMarketHistory(symbol, range = 'ytd', interval = '1d', exchange = 'NSE') {
+  return request(
+    `/api/market/history?symbol=${encodeURIComponent(symbol)}&range=${encodeURIComponent(range)}&interval=${encodeURIComponent(interval)}&exchange=${encodeURIComponent(exchange)}`,
+  );
 }
 
 export function getOptionChain(symbol, exchange = 'NSE', expiry = '', strikeCount = 12) {
@@ -140,21 +147,39 @@ export function getCompanyIntelligence(symbol) {
 }
 
 export async function getLiveMarketQuotes(symbols = [], options = {}) {
-  const uniqueSymbols = [...new Set(symbols.map((symbol) => String(symbol || '').trim().toUpperCase()).filter(Boolean))];
+  const normalizedSymbols = symbols
+    .map((entry) => {
+      if (typeof entry === 'string') {
+        const symbol = String(entry || '').trim().toUpperCase();
+        return symbol ? { symbol, exchange: 'NSE' } : null;
+      }
+
+      const symbol = String(entry?.symbol || '').trim().toUpperCase();
+      if (!symbol) return null;
+      return {
+        symbol,
+        exchange: String(entry?.exchange || 'NSE').trim().toUpperCase() || 'NSE',
+      };
+    })
+    .filter(Boolean);
+  const uniqueSymbols = [...new Map(normalizedSymbols.map((entry) => [`${entry.exchange}:${entry.symbol}`, entry])).values()];
   const concurrency = Math.max(1, Math.min(options.concurrency || 6, 10));
   const results = new Map();
   const failures = [];
 
   for (let index = 0; index < uniqueSymbols.length; index += concurrency) {
     const batch = uniqueSymbols.slice(index, index + concurrency);
-    const settled = await Promise.allSettled(batch.map((symbol) => getLiveMarketQuote(symbol, options)));
+    const settled = await Promise.allSettled(
+      batch.map((entry) => getLiveMarketQuote(entry.symbol, { ...options, exchange: entry.exchange })),
+    );
 
     settled.forEach((entry, batchIndex) => {
-      const symbol = batch[batchIndex];
+      const batchEntry = batch[batchIndex];
+      const key = `${batchEntry.exchange}:${batchEntry.symbol}`;
       if (entry.status === 'fulfilled' && Number.isFinite(Number(entry.value?.price)) && Number(entry.value.price) > 0) {
-        results.set(symbol, entry.value);
+        results.set(key, entry.value);
       } else {
-        failures.push(symbol);
+        failures.push(key);
       }
     });
   }
@@ -164,6 +189,7 @@ export async function getLiveMarketQuotes(symbols = [], options = {}) {
 
 export function mapZerodhaHoldingToPortfolio(holding) {
   const symbol = holding.tradingsymbol || holding.symbol;
+  const exchange = String(holding.exchange || 'NSE').trim().toUpperCase() || 'NSE';
   const currentPrice = Number(holding.last_price || holding.close_price || 0);
   const averagePrice = Number(holding.average_price || holding.t1_average_price || currentPrice || 0);
   const quantity = Number(
@@ -182,7 +208,7 @@ export function mapZerodhaHoldingToPortfolio(holding) {
     current_price: currentPrice || averagePrice,
     buy_date: new Date().toISOString().slice(0, 10),
     currency: 'INR',
-    exchange: holding.exchange || 'NSE',
+    exchange,
     notes: `Imported from Zerodha ${holding.product ? `(${holding.product})` : ''}`.trim(),
   };
 }
