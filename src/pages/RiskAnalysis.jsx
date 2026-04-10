@@ -1,11 +1,12 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, ArrowRight, Shield } from 'lucide-react';
+import { AlertTriangle, ArrowRight, ChevronDown, ChevronUp, Shield } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { buildRiskNarrative, derivePortfolioAnalytics, formatCurrency } from '@/lib/portfolioAnalytics';
 import { buildPortfolioAdvancedMetrics } from '@/lib/advancedAnalytics';
 
 export default function RiskAnalysis() {
+  const [openSector, setOpenSector] = useState(null);
   const { data: stocks = [] } = useQuery({
     queryKey: ['stocks'],
     queryFn: () => base44.entities.Stock.list('-created_date'),
@@ -30,6 +31,16 @@ export default function RiskAnalysis() {
     sector_exposure: analytics.sectorExposure.map((sector) => ({
       sector: sector.sector,
       percentage: sector.allocation,
+      holdings: analytics.holdings
+        .filter((holding) => (holding.sector || 'Unknown') === sector.sector)
+        .sort((left, right) => right.allocation - left.allocation)
+        .map((holding) => ({
+          id: holding.id,
+          symbol: holding.symbol,
+          name: holding.name,
+          allocation: holding.allocation,
+          value: holding.value,
+        })),
     })),
     portfolio_beta: analytics.totals.weightedBeta,
     risk_factors: narrative.riskFactors,
@@ -159,14 +170,49 @@ export default function RiskAnalysis() {
           <h2 className="text-xl font-semibold text-white">Sector Exposure</h2>
           <div className="mt-5 space-y-4">
             {report.sector_exposure.map((sector) => (
-              <div key={sector.sector}>
-                <div className="mb-2 flex items-center justify-between">
-                  <p className="text-sm text-slate-300">{sector.sector}</p>
-                  <p className="text-sm font-semibold text-white">{sector.percentage.toFixed(1)}%</p>
-                </div>
+              <div key={sector.sector} className="rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
+                <button
+                  type="button"
+                  onClick={() => setOpenSector((current) => (current === sector.sector ? null : sector.sector))}
+                  className="w-full text-left"
+                >
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm text-slate-300">{sector.sector}</p>
+                      <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">
+                        {sector.holdings.length} stock{sector.holdings.length === 1 ? '' : 's'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <p className="text-sm font-semibold text-white">{sector.percentage.toFixed(1)}%</p>
+                      {openSector === sector.sector ? (
+                        <ChevronUp className="h-4 w-4 text-slate-400" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4 text-slate-400" />
+                      )}
+                    </div>
+                  </div>
+                </button>
                 <div className="h-3 overflow-hidden rounded-full bg-white/8">
                   <div className="h-full rounded-full bg-gradient-to-r from-amber-300 to-cyan-400" style={{ width: `${Math.min(sector.percentage, 100)}%` }} />
                 </div>
+
+                {openSector === sector.sector ? (
+                  <div className="mt-4 space-y-2">
+                    {sector.holdings.map((holding) => (
+                      <div key={holding.id || `${sector.sector}-${holding.symbol}`} className="flex items-center justify-between rounded-[18px] border border-white/8 bg-[#101925] px-3 py-3">
+                        <div>
+                          <p className="text-sm font-medium text-white">{holding.symbol}</p>
+                          <p className="mt-1 text-xs text-slate-400">{holding.name}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-semibold text-white">{holding.allocation.toFixed(1)}%</p>
+                          <p className="mt-1 text-xs text-slate-400">{formatCurrency(holding.value)}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>
