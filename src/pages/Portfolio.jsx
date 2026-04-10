@@ -146,13 +146,13 @@ export default function Portfolio() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[36px] border border-white/10 bg-[#0b1624]/90 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.24)]">
+      <section className="app-hero rounded-[36px] p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.28em] text-amber-200/80">Portfolio operations</p>
-            <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white">Manage holdings, imports, and exports</h1>
-            <p className="mt-3 max-w-2xl text-base leading-7 text-slate-300">
-              Add positions manually, import files, export the current state, and review position-level analytics in one workflow.
+            <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white">Manage holdings with a cleaner, less cluttered workflow</h1>
+            <p className="mt-3 max-w-2xl app-subtle-text">
+              Add, import, refresh, and clean holdings from one place. This screen is tuned to feel more like an operations desk and less like a raw data form.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -174,6 +174,18 @@ export default function Portfolio() {
             </Button>
           </div>
         </div>
+
+        <div className="mt-6 grid gap-3 md:grid-cols-3">
+          {[
+            'Import first if you already have an Excel portfolio.',
+            'Fetch Live Prices after imports or broker sync.',
+            'Use Clear Portfolio only when you want a full reset.',
+          ].map((item) => (
+            <div key={item} className="rounded-[22px] border border-white/8 bg-white/[0.04] px-4 py-3 text-sm text-slate-200">
+              {item}
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -183,7 +195,7 @@ export default function Portfolio() {
           { label: 'Net Gain / Loss', value: `${analytics.totals.totalPnL >= 0 ? '+' : '-'}${formatCompactCurrency(Math.abs(analytics.totals.totalPnL))}`, note: 'Absolute portfolio move' },
           { label: 'Largest Holding', value: analytics.holdings[0] ? `${analytics.holdings[0].symbol} ${analytics.holdings[0].allocation.toFixed(1)}%` : '--', note: 'Use this to monitor concentration' },
         ].map((card) => (
-          <div key={card.label} className="rounded-[28px] border border-white/10 bg-[#0b1624]/90 p-5">
+          <div key={card.label} className="app-panel rounded-[28px] p-5">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{card.label}</p>
             <p className="mt-3 text-2xl font-semibold text-white">{card.value}</p>
             <p className="mt-2 text-sm text-slate-400">{card.note}</p>
@@ -224,7 +236,7 @@ export default function Portfolio() {
             note: 'Largest sector share of portfolio value',
           },
         ].map((card) => (
-          <div key={card.label} className="rounded-[28px] border border-white/10 bg-[#0b1624]/90 p-5">
+          <div key={card.label} className="app-panel rounded-[28px] p-5">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{card.label}</p>
             <p className="mt-3 text-2xl font-semibold text-white">{card.value}</p>
             <p className="mt-2 text-sm text-slate-400">{card.note}</p>
@@ -232,7 +244,7 @@ export default function Portfolio() {
         ))}
       </section>
 
-      <section className="rounded-[32px] border border-white/10 bg-[#0b1624]/90 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.24)]">
+      <section className="app-panel rounded-[32px] p-6">
         <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative w-full max-w-xl">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
@@ -251,6 +263,30 @@ export default function Portfolio() {
         </div>
 
         <StockTable stocks={filteredStocks} onDelete={setDeleteId} onRefreshPrice={refreshOne} refreshingId={refreshingId} />
+      </section>
+
+      <section className="app-panel rounded-[32px] p-6">
+        <div className="grid gap-4 md:grid-cols-3">
+          {[
+            {
+              title: 'Best for beginners',
+              text: 'Use Add Holding for one or two stocks so you can understand the data fields before importing a large file.',
+            },
+            {
+              title: 'Best for speed',
+              text: 'Use Import when you already have your portfolio in Excel, then run Fetch Live Prices once to normalize current values.',
+            },
+            {
+              title: 'Best for cleanup',
+              text: 'Search by symbol, company, or sector to trim duplicate entries before syncing or exporting.',
+            },
+          ].map((item) => (
+            <div key={item.title} className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
+              <p className="font-medium text-white">{item.title}</p>
+              <p className="mt-2 text-sm text-slate-400">{item.text}</p>
+            </div>
+          ))}
+        </div>
       </section>
       <AddStockDialog open={addOpen} onOpenChange={setAddOpen} onStockAdded={() => queryClient.invalidateQueries({ queryKey: ['stocks'] })} />
       <ImportDialog open={importOpen} onOpenChange={setImportOpen} onImportComplete={() => queryClient.invalidateQueries({ queryKey: ['stocks'] })} />

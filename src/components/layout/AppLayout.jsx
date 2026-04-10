@@ -166,18 +166,18 @@ export default function AppLayout() {
   ) : null;
 
   return (
-    <div className="min-h-screen bg-[#07111c] text-white">
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(245,158,11,0.15),_transparent_28%),radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.18),_transparent_32%),linear-gradient(180deg,_#09121f,_#07111c_55%,_#08131f)]" />
+    <div className="app-shell">
+      <div className="app-backdrop pointer-events-none fixed inset-0 opacity-60" />
 
-      <header className="fixed inset-x-0 top-0 z-40 border-b border-white/8 bg-[#07111c]/80 backdrop-blur-xl">
+      <header className="fixed inset-x-0 top-0 z-40 border-b border-white/8 bg-[#07111c]/72 backdrop-blur-2xl">
         <div className="mx-auto flex max-w-[1680px] items-center justify-between px-4 py-4 lg:px-8">
           <div className="flex items-center gap-3">
-            <div className="rounded-2xl bg-amber-300 p-2 text-slate-950">
+            <div className="rounded-2xl bg-amber-300 p-2 text-slate-950 shadow-[0_10px_30px_rgba(244,180,69,0.28)]">
               <TrendingUp className="h-4 w-4" />
             </div>
             <div>
-              <p className="text-sm font-semibold">TickerTap Clone</p>
-              <p className="text-xs text-slate-400">Portfolio analyzer</p>
+              <p className="text-sm font-semibold tracking-[0.03em]">TickerTap Harbor</p>
+              <p className="text-xs text-slate-400">Portfolio analyzer and trading desk</p>
             </div>
           </div>
 
@@ -221,7 +221,7 @@ export default function AppLayout() {
               </button>
             ) : null}
             {accountCard ? <div className="mb-2">{accountCard}</div> : null}
-            <div className="flex gap-2 overflow-x-auto">
+            <div className="flex gap-2 overflow-x-auto pb-1">
             {NAV_ITEMS.map((item) => (
               <NavLink key={item.path} item={item} active={location.pathname === item.path} />
             ))}
@@ -238,7 +238,7 @@ export default function AppLayout() {
               {indexItems.length ? indexItems.map((item) => {
                 const positive = Number(item.changePercent || 0) >= 0;
                 return (
-                  <div key={item.key} className="flex min-w-fit items-center gap-2 rounded-[18px] border border-white/8 bg-white/[0.03] px-2.5 py-1.5">
+                  <div key={item.key} className="flex min-w-fit items-center gap-2 rounded-[18px] border border-white/8 bg-white/[0.03] px-2.5 py-1.5 backdrop-blur">
                     <div>
                       <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-300">{item.label}</p>
                       <p className="mt-0.5 text-[15px] font-semibold leading-none text-white">{formatCurrency(item.price, item.currency || 'INR').replace('.00', '')}</p>
@@ -262,6 +262,11 @@ export default function AppLayout() {
       </header>
       <div className="relative mx-auto max-w-[1680px] px-3 pb-10 pt-[18.5rem] sm:px-4 sm:pt-[17rem] lg:px-8 lg:pt-48">
         <main className="relative z-10 min-w-0 pt-2 lg:pt-0">
+          <div className="mb-5 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+            <span className="app-chip px-3 py-1.5">Theme: Harbor Ledger</span>
+            <span className="app-chip px-3 py-1.5">Clearer dashboards</span>
+            <span className="app-chip px-3 py-1.5">Mobile-friendly navigation</span>
+          </div>
           <Outlet />
         </main>
       </div>

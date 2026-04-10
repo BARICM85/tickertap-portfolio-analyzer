@@ -12,7 +12,7 @@ import { derivePortfolioAnalytics, deriveWatchlistAnalytics, formatCurrency, for
 
 function Panel({ title, subtitle, action, children }) {
   return (
-    <section className="rounded-[32px] border border-white/10 bg-[#0b1624]/90 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.24)]">
+    <section className="app-panel rounded-[32px] p-6">
       <div className="mb-5 flex items-start justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-white">{title}</h2>
@@ -53,19 +53,31 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[36px] border border-white/10 bg-[linear-gradient(135deg,rgba(245,158,11,0.16),rgba(59,130,246,0.12)_45%,rgba(15,23,42,0.94))] p-6 shadow-[0_28px_90px_rgba(0,0,0,0.28)]">
+      <section className="app-hero rounded-[36px] p-6">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">
-            <p className="text-xs uppercase tracking-[0.28em] text-amber-200/80">Portfolio command center</p>
-            <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white">TickerTap-style stock portfolio analyzing app</h1>
-            <p className="mt-3 text-base leading-7 text-slate-200/90">
-              Track holdings, scan allocation drift, review watchlist opportunities, and pressure-test risk without leaving the browser.
+            <p className="text-xs uppercase tracking-[0.28em] text-amber-200/80">Harbor Ledger theme</p>
+            <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white">A calmer command center for holdings, risk, and trade prep</h1>
+            <p className="mt-3 app-subtle-text text-slate-200/90">
+              The dashboard is now tuned for faster reading: clearer priority cards, less visual noise, and a steadier theme for long portfolio review sessions.
             </p>
           </div>
           <Button onClick={refreshAll} disabled={refreshing} className="rounded-2xl bg-amber-300 text-slate-950 hover:bg-amber-200">
             <RefreshCw className={refreshing ? 'animate-spin' : ''} />
             {refreshing ? 'Refreshing' : 'Refresh Snapshot'}
           </Button>
+        </div>
+
+        <div className="mt-6 grid gap-3 md:grid-cols-3">
+          {[
+            'Start on Dashboard for portfolio pulse and concentration.',
+            'Use Portfolio for imports, clean-up, and live price refresh.',
+            'Use Risk Lab before any major rebalance or hedge.',
+          ].map((item) => (
+            <div key={item} className="rounded-[22px] border border-white/8 bg-white/[0.04] px-4 py-3 text-sm text-slate-200">
+              {item}
+            </div>
+          ))}
         </div>
       </section>
 
@@ -199,6 +211,30 @@ export default function Dashboard() {
           </div>
         </Panel>
       </div>
+
+      <Panel title="How To Use This App" subtitle="Simple guidance to make the screens easier to learn.">
+        <div className="grid gap-4 md:grid-cols-3">
+          {[
+            {
+              title: 'Daily check',
+              text: 'Start with Dashboard, then review net P&L, largest position, and near-target watchlist names.',
+            },
+            {
+              title: 'Weekly review',
+              text: 'Move to Risk Lab for sector concentration, beta, and rebalance ideas before making portfolio changes.',
+            },
+            {
+              title: 'Trading workflow',
+              text: 'Use Trading Terminal only after checking broker sync and risk state so execution does not feel detached from the portfolio.',
+            },
+          ].map((item) => (
+            <div key={item.title} className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
+              <p className="font-medium text-white">{item.title}</p>
+              <p className="mt-2 text-sm text-slate-400">{item.text}</p>
+            </div>
+          ))}
+        </div>
+      </Panel>
 
       <Panel title="What to do next" subtitle="Simple operating checklist for this portfolio.">
         <div className="grid gap-4 md:grid-cols-3">
