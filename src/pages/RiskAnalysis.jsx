@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { AlertTriangle, ArrowRight, ChevronDown, ChevronUp, Shield } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { buildRiskNarrative, derivePortfolioAnalytics, formatCurrency } from '@/lib/portfolioAnalytics';
 import { buildPortfolioAdvancedMetrics } from '@/lib/advancedAnalytics';
+import { getCompanyIntelligence } from '@/lib/brokerClient';
 
 export default function RiskAnalysis() {
   const [openSector, setOpenSector] = useState(null);
@@ -11,10 +12,37 @@ export default function RiskAnalysis() {
     queryKey: ['stocks'],
     queryFn: () => base44.entities.Stock.list('-created_date'),
   });
+  const intelligenceQueries = useQueries({
+    queries: stocks.map((stock) => ({
+      queryKey: ['company-intelligence', stock.symbol],
+      queryFn: () => getCompanyIntelligence(stock.symbol),
+      enabled: Boolean(stock.symbol),
+      staleTime: 1000 * 60 * 60,
+      retry: false,
+    })),
+  });
+  const sectorOverrides = useMemo(() => {
+    const next = new Map();
+    intelligenceQueries.forEach((query, index) => {
+      const symbol = String(stocks[index]?.symbol || '').trim().toUpperCase();
+      const sector = String(query.data?.meta?.sector || '').trim();
+      if (symbol && sector) {
+        next.set(symbol, sector);
+      }
+    });
+    return next;
+  }, [intelligenceQueries, stocks]);
+  const sectorResolvedStocks = useMemo(
+    () => stocks.map((stock) => ({
+      ...stock,
+      sector: sectorOverrides.get(String(stock.symbol || '').trim().toUpperCase()) || stock.sector,
+    })),
+    [sectorOverrides, stocks],
+  );
 
   const analytics = useMemo(
-    () => derivePortfolioAnalytics(stocks, { includeTimeline: false, includeScenarios: false }),
-    [stocks],
+    () => derivePortfolioAnalytics(sectorResolvedStocks, { includeTimeline: false, includeScenarios: false }),
+    [sectorResolvedStocks],
   );
   const advancedMetrics = useMemo(() => buildPortfolioAdvancedMetrics(analytics), [analytics]);
   const narrative = useMemo(() => buildRiskNarrative(analytics), [analytics]);
