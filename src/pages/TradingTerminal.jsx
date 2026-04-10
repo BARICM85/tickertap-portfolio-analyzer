@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowUpRight,
+  BookOpen,
+  CheckCircle2,
   Layers3,
   RefreshCw,
   ShieldCheck,
@@ -26,8 +28,9 @@ import {
   readExecutionGuard,
   readTerminalBlotter,
   readTrackedSymbols,
+  SEMI_AUTO_BUILD_STEPS,
   summarizeMargins,
-  TERMINAL_LAYOUTS,
+  TERMINAL_README_SECTIONS,
   writeExecutionGuard,
   writeTerminalBlotter,
   writeTrackedSymbols,
@@ -68,6 +71,14 @@ function Stat({ label, value, note, tone = 'slate' }) {
       {note ? <p className="mt-1 text-xs opacity-80">{note}</p> : null}
     </div>
   );
+}
+
+function getStepBadgeClasses(status = 'planned') {
+  return {
+    active: 'bg-emerald-400/15 text-emerald-100 border-emerald-400/20',
+    planned: 'bg-cyan-300/12 text-cyan-100 border-cyan-300/20',
+    later: 'bg-white/8 text-slate-300 border-white/10',
+  }[status] || 'bg-white/8 text-slate-300 border-white/10';
 }
 
 function formatDateTime(value) {
@@ -353,11 +364,10 @@ export default function TradingTerminal() {
       <section className="rounded-[34px] border border-white/10 bg-[linear-gradient(135deg,rgba(56,189,248,0.18),rgba(15,23,42,0.96)_50%,rgba(245,158,11,0.14))] p-6 shadow-[0_32px_90px_rgba(0,0,0,0.28)]">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div className="max-w-4xl">
-            <p className="text-xs uppercase tracking-[0.28em] text-cyan-200/80">Options and futures dealing workspace</p>
+            <p className="text-xs uppercase tracking-[0.28em] text-cyan-200/80">Semi-automatic delta desk</p>
             <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white">Trading Terminal</h1>
             <p className="mt-3 text-base leading-7 text-slate-100/90">
-              Architecture-led F&O terminal modeled after serious execution desks: broker ingress, futures ladder, option structure,
-              order-ticket workspace, risk gate, and blotter review in one dense screen.
+              One terminal only: broker-backed F&O structure, paper-first execution, and a learning path toward a proper semi-automatic delta-hedging desk without duplicating tools elsewhere in the app.
             </p>
           </div>
 
@@ -375,6 +385,14 @@ export default function TradingTerminal() {
           </div>
         </div>
       </section>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <Stat label="Phase" value="Semi-auto" note="Human confirms every live hedge" tone="cyan" />
+        <Stat label="Broker" value={brokerConnected ? 'Connected' : 'Standby'} note="Paid Zerodha backend route" tone={brokerConnected ? 'emerald' : 'slate'} />
+        <Stat label="Chain" value={optionOverview?.rows?.length ? 'Live structure' : 'Pending'} note={optionError?.message || 'Option chain readiness'} tone={optionOverview?.rows?.length ? 'emerald' : 'amber'} />
+        <Stat label="Positions" value={positions.length ? `${positions.length} open` : 'No live positions'} note="Needed later for net greek monitor" tone="slate" />
+        <Stat label="Execution" value={executionGuard.liveMode ? 'Live mode selected' : 'Paper mode'} note="Chain Buy / Sell follows this mode" tone={executionGuard.liveMode ? 'amber' : 'slate'} />
+      </div>
 
       <div className="grid gap-6 xl:grid-cols-[0.86fr_1.55fr_0.95fr]">
         <Section
@@ -801,28 +819,104 @@ export default function TradingTerminal() {
         </Section>
       </div>
 
-      <Section title="Terminal architecture" subtitle="Research-led operating model adapted to the current Zerodha-backed app.">
-        <div className="grid gap-4 xl:grid-cols-4">
-          {TERMINAL_LAYOUTS.map((item, index) => (
-            <div key={item.title} className="rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
-              <p className="text-xs uppercase tracking-[0.2em] text-cyan-300">Layer {index + 1}</p>
-              <h3 className="mt-2 text-base font-semibold text-white">{item.title}</h3>
-              <p className="mt-2 text-sm text-slate-400">{item.subtitle}</p>
-              <div className="mt-4 space-y-2 text-sm text-slate-300">
-                {item.points.map((point) => (
-                  <p key={point}>- {point}</p>
-                ))}
+      <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <Section
+          title="Semi-auto Build Steps"
+          subtitle="Recommended build order from scope lock through controlled automation."
+          action={(
+            <Badge className="rounded-full bg-white/10 text-slate-100">
+              11 steps
+            </Badge>
+          )}
+        >
+          <div className="grid gap-4 xl:grid-cols-2">
+            {SEMI_AUTO_BUILD_STEPS.map((item) => (
+              <div key={item.step} className="rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-cyan-300">Step {item.step}</p>
+                    <h3 className="mt-2 text-base font-semibold text-white">{item.title}</h3>
+                    <p className="mt-2 text-sm text-slate-400">{item.subtitle}</p>
+                  </div>
+                  <span className={`rounded-full border px-3 py-1 text-[11px] font-medium uppercase tracking-[0.14em] ${getStepBadgeClasses(item.status)}`}>
+                    {item.status}
+                  </span>
+                </div>
+                <div className="mt-4 space-y-2 text-sm text-slate-300">
+                  {item.points.map((point) => (
+                    <p key={point}>- {point}</p>
+                  ))}
+                </div>
               </div>
+            ))}
+          </div>
+        </Section>
+
+        <Section
+          title="Terminal README"
+          subtitle="Learning notes inside the terminal while we build the semi-automatic hedge desk."
+          action={(
+            <div className="rounded-full bg-amber-300/15 px-3 py-2 text-xs text-amber-100">
+              <BookOpen className="mr-2 inline h-4 w-4" />
+              Learn here
+            </div>
+          )}
+        >
+          <div className="space-y-3">
+            {TERMINAL_README_SECTIONS.map((section) => (
+              <div key={section.title} className="rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-cyan-300" />
+                  <div>
+                    <p className="text-sm font-semibold text-white">{section.title}</p>
+                    <p className="mt-2 text-sm leading-7 text-slate-300">{section.body}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 rounded-[22px] border border-white/8 bg-[#101925] p-4 text-sm text-slate-300">
+            Current operator workflow:
+            <div className="mt-3 space-y-2">
+              <p>1. Track the underlying on the market board and refresh structure.</p>
+              <p>2. Use futures ladder or option chain Buy / Sell to load the ticket.</p>
+              <p>3. Paper mode sends directly to blotter; live mode requires arming and final confirmation.</p>
+              <p>4. Review positions, blotter, and order book before the next hedge or adjustment.</p>
+            </div>
+          </div>
+        </Section>
+      </div>
+
+      <Section title="Reference Links" subtitle="Docs and references that guide the terminal build direction.">
+        <div className="grid gap-4 xl:grid-cols-3">
+          {[
+            {
+              title: 'Zerodha Kite Connect',
+              text: 'Broker auth, orders, positions, quotes, instruments, and WebSocket base for the desk.',
+              href: 'https://kite.trade/docs/connect/v3/',
+            },
+            {
+              title: 'Greeksoft API Page',
+              text: 'Reference point for the execution and strategy workflow we are approximating.',
+              href: 'https://greeksoft.co.in/api_document.html',
+            },
+            {
+              title: 'Executive Summary',
+              text: 'Project direction: semi-auto delta desk first, then greeks engine, then hedge suggestions.',
+              href: null,
+            },
+          ].map((item) => (
+            <div key={item.title} className="rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
+              <p className="text-base font-semibold text-white">{item.title}</p>
+              <p className="mt-2 text-sm leading-7 text-slate-400">{item.text}</p>
+              {item.href ? (
+                <a className="mt-4 inline-flex rounded-full border border-white/8 bg-white/[0.03] px-4 py-2 text-sm text-slate-300 hover:bg-white/[0.06] hover:text-white" href={item.href} target="_blank" rel="noreferrer">
+                  Open reference
+                </a>
+              ) : null}
             </div>
           ))}
-        </div>
-        <div className="mt-5 flex flex-wrap gap-2 text-sm text-slate-400">
-          <a className="rounded-full border border-white/8 bg-white/[0.03] px-4 py-2 hover:bg-white/[0.06] hover:text-white" href="https://kite.trade/docs/connect/v3/" target="_blank" rel="noreferrer">
-            Zerodha Kite Connect docs
-          </a>
-          <a className="rounded-full border border-white/8 bg-white/[0.03] px-4 py-2 hover:bg-white/[0.06] hover:text-white" href="https://aws.amazon.com/event-driven-architecture/" target="_blank" rel="noreferrer">
-            Event-driven architecture reference
-          </a>
         </div>
       </Section>
 

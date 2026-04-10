@@ -1,42 +1,150 @@
 import { namespacedKey } from '@/lib/appConfig';
 import { formatCurrency, formatPercent } from '@/lib/portfolioAnalytics';
 
-export const TERMINAL_LAYOUTS = [
+export const SEMI_AUTO_BUILD_STEPS = [
   {
-    title: 'Market ingress',
-    subtitle: 'Quotes, futures ladder, option chain, broker positions',
+    step: '1',
+    title: 'Scope lock',
+    subtitle: 'Semi-automatic delta hedging only',
     points: [
-      'Zerodha-backed broker status and session',
-      'Spot quote plus near-month futures ladder',
-      'Option chain with expiry and OI structure',
+      'Human confirms every live hedge',
+      'Paper mode remains the default route',
+      'No fully autonomous hedging loop in phase 1',
     ],
+    status: 'active',
   },
   {
-    title: 'Execution workspace',
-    subtitle: 'Dense operator screen with one-click context',
+    step: '2',
+    title: 'Broker foundation',
+    subtitle: 'Paid Zerodha app, session, and auth recovery',
     points: [
-      'Tracked underlyings board on the left',
-      'Central chain and futures structure',
-      'Order ticket and risk inspector on the right',
+      'Hosted backend manages auth handshake',
+      'Session recovery and reconnect rules',
+      'Instrument master and broker health checks',
     ],
+    status: 'active',
   },
   {
-    title: 'Risk gate',
-    subtitle: 'Capital, available margin, and position concentration first',
+    step: '3',
+    title: 'Market data core',
+    subtitle: 'Option chain, futures ladder, and quote normalization',
     points: [
-      'Order routing stays paper-first in the terminal build',
-      'Margins, exposure, and open positions are visible before action',
-      'Manual blotter keeps intent history for audit',
+      'Spot quote plus futures basis view',
+      'Broker-backed option chain with strikes and OI',
+      'Fast cache path for repeated contract lookup',
     ],
+    status: 'active',
   },
   {
-    title: 'Review and monitor',
-    subtitle: 'Orders, holdings, expiry map, and operating notes',
+    step: '4',
+    title: 'Greeks engine',
+    subtitle: 'Live delta, gamma, vega, theta per position',
     points: [
-      'Flattened positions and order history',
-      'PCR, support, resistance, max pain, ATM context',
-      'Architecture mirrors serious terminal workflows without pretending to auto-trade yet',
+      'Needs portfolio and contract-level greek calculation',
+      'Should support expiry and scenario shifts',
+      'Becomes the base for hedge suggestions',
     ],
+    status: 'planned',
+  },
+  {
+    step: '5',
+    title: 'Position intelligence',
+    subtitle: 'Read current F&O structure from broker positions',
+    points: [
+      'Aggregate open positions and open orders',
+      'Estimate net portfolio delta and risk pockets',
+      'Highlight naked short or oversized gamma exposure',
+    ],
+    status: 'planned',
+  },
+  {
+    step: '6',
+    title: 'Hedge suggestion engine',
+    subtitle: 'Semi-auto recommendations instead of blind execution',
+    points: [
+      'Recommend futures or option hedge contracts',
+      'Show before and after delta effect',
+      'Allow operator to load suggestion into the ticket',
+    ],
+    status: 'planned',
+  },
+  {
+    step: '7',
+    title: 'Terminal UI',
+    subtitle: 'Dealer workflow across board, chain, ticket, and blotter',
+    points: [
+      'One route, one terminal, no duplicate surfaces',
+      'Fast option chain actions into paper or live flow',
+      'README and learning guidance built into the page',
+    ],
+    status: 'active',
+  },
+  {
+    step: '8',
+    title: 'Pre-trade risk controls',
+    subtitle: 'Live safety gate before any broker order',
+    points: [
+      'Arm code, product checks, and max quantity guard',
+      'Margin and available funds awareness',
+      'Manual operator note and audit trail',
+    ],
+    status: 'active',
+  },
+  {
+    step: '9',
+    title: 'Execution router',
+    subtitle: 'Paper by default, guarded live mode',
+    points: [
+      'Same contract actions route into current mode',
+      'Paper intent goes to blotter instantly',
+      'Live intent requires explicit confirmation',
+    ],
+    status: 'active',
+  },
+  {
+    step: '10',
+    title: 'Monitoring and resilience',
+    subtitle: 'Stale feed, reconnect, and broker failure handling',
+    points: [
+      'Detect missing market structure fast',
+      'Fallback messaging when broker data is denied',
+      'Keep auditability of dealer actions',
+    ],
+    status: 'planned',
+  },
+  {
+    step: '11',
+    title: 'Controlled automation',
+    subtitle: 'Only after manual semi-auto flow is stable',
+    points: [
+      'Threshold-based hedge nudges first',
+      'Auto execution only with approvals and controls',
+      'Never jump directly to unmanned hedging',
+    ],
+    status: 'later',
+  },
+];
+
+export const TERMINAL_README_SECTIONS = [
+  {
+    title: 'What This Terminal Is',
+    body: 'This is a semi-automatic F&O dealing workspace for Zerodha. It is meant to help monitor structure, prepare trades, and route paper or live orders with human confirmation.',
+  },
+  {
+    title: 'What Phase 1 Covers',
+    body: 'Phase 1 focuses on broker connection, option chain, futures ladder, order ticket, blotter, positions, and guarded live execution. It does not promise full automatic delta hedging yet.',
+  },
+  {
+    title: 'How To Use It',
+    body: 'Pick the underlying, inspect futures and option structure, click Buy or Sell from the chain to preload the ticket, then route to paper blotter or arm live mode for actual order submission.',
+  },
+  {
+    title: 'What Comes Next',
+    body: 'The next engineering layer is a proper greeks engine, net portfolio delta monitor, and hedge recommendation module that can suggest the exact hedge contract before execution.',
+  },
+  {
+    title: 'Live Trading Warning',
+    body: 'Live mode should stay manual and operator-confirmed. A fully automated hedging loop can create execution, compliance, and risk-management issues if introduced too early.',
   },
 ];
 
