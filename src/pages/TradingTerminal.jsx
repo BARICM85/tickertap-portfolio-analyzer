@@ -2,11 +2,16 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowUpRight,
+  Bot,
   BookOpen,
   CheckCircle2,
+  Gauge,
   Layers3,
+  Radar,
   RefreshCw,
   ShieldCheck,
+  Sparkles,
+  Target,
   Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -21,16 +26,19 @@ import {
   createBlotterEntry,
   createTicketDraft,
   buildTerminalBias,
+  buildDeltaAssistant,
   flattenBrokerOrders,
   flattenBrokerPositions,
   formatTerminalOrder,
   getToneClasses,
+  readAutomationSettings,
   readExecutionGuard,
   readTerminalBlotter,
   readTrackedSymbols,
   SEMI_AUTO_BUILD_STEPS,
   summarizeMargins,
   TERMINAL_README_SECTIONS,
+  writeAutomationSettings,
   writeExecutionGuard,
   writeTerminalBlotter,
   writeTrackedSymbols,
@@ -98,6 +106,7 @@ export default function TradingTerminal() {
   const [selectedSymbol, setSelectedSymbol] = useState(() => readTrackedSymbols()[0] || 'NIFTY');
   const [blotter, setBlotter] = useState(() => readTerminalBlotter());
   const [executionGuard, setExecutionGuard] = useState(() => readExecutionGuard());
+  const [automationSettings, setAutomationSettings] = useState(() => readAutomationSettings());
   const [ticket, setTicket] = useState(() => createTicketDraft(readTrackedSymbols()[0] || 'NIFTY'));
   const [searchValue, setSearchValue] = useState('');
   const [armCode, setArmCode] = useState('');
@@ -116,6 +125,10 @@ export default function TradingTerminal() {
   useEffect(() => {
     writeExecutionGuard(executionGuard);
   }, [executionGuard]);
+
+  useEffect(() => {
+    writeAutomationSettings(automationSettings);
+  }, [automationSettings]);
 
   useEffect(() => {
     setTicket((current) => ({ ...current, symbol: selectedSymbol }));
@@ -222,6 +235,31 @@ export default function TradingTerminal() {
   );
   const liveModeArmed = executionGuard.liveMode && executionGuard.armed && armCode.trim().toUpperCase() === 'LIVE';
   const executionModeLabel = executionGuard.liveMode ? 'Live routing selected' : 'Paper routing selected';
+  const deltaAssistant = useMemo(() => buildDeltaAssistant({
+    selectedSymbol,
+    spotPrice: Number(optionOverview?.spotPrice || stock.current_price || 0),
+    positions,
+    optionRows: optionOverview?.rows || [],
+    futuresRows: futuresBoard?.rows || [],
+    optionLotSize: Number(optionOverview?.lotSize || futuresBoard?.lotSize || 1),
+    thresholds: automationSettings,
+  }), [
+    automationSettings,
+    futuresBoard?.lotSize,
+    futuresBoard?.rows,
+    optionOverview?.lotSize,
+    optionOverview?.rows,
+    optionOverview?.spotPrice,
+    positions,
+    selectedSymbol,
+    stock.current_price,
+  ]);
+  const triggerReady = deltaAssistant.monitoringState === 'threshold-breach' && Boolean(deltaAssistant.hedgeSuggestion);
+  const cooldownActive = useMemo(() => {
+    if (!automationSettings.lastTriggeredAt) return false;
+    const elapsedMs = Date.now() - new Date(automationSettings.lastTriggeredAt).getTime();
+    return elapsedMs < Number(automationSettings.triggerCooldownMinutes || 15) * 60 * 1000;
+  }, [automationSettings.lastTriggeredAt, automationSettings.triggerCooldownMinutes]);
 
   const primeTicketFromContract = (contract, side = ticket.side) => {
     const lots = Number(contract.lotSize || ticket.quantity || 1);
@@ -285,6 +323,41 @@ export default function TradingTerminal() {
       exchange: 'NFO',
       price: referencePrice ? String(referencePrice) : current.price,
     }));
+  };
+
+  const handlePrepareHedge = (suggestion = deltaAssistant.hedgeSuggestion, options = {}) => {
+    if (!suggestion?.contract?.contractSymbol) {
+      toast.error('No hedge contract is ready yet.');
+      return;
+    }
+
+    const preparedTicket = {
+      ...ticket,
+      symbol: suggestion.contract.symbol || selectedSymbol,
+      segment: suggestion.contract.segment || 'OPTIONS',
+      exchange: suggestion.contract.exchange || 'NFO',
+      side: suggestion.contract.action || 'BUY',
+      contractSymbol: suggestion.contract.contractSymbol,
+      quantity: String(suggestion.contract.quantity || suggestion.contract.lotSize || 1),
+      price: suggestion.contract.price ? String(suggestion.contract.price) : '',
+      note: options.note || `Prepared hedge | ${suggestion.summary}`,
+    };
+
+    setTicket(preparedTicket);
+
+    if (options.queuePaper && !executionGuard.liveMode) {
+      const entry = createBlotterEntry(preparedTicket, {
+        referencePrice: Number(suggestion.contract.price || 0),
+        liveExecutionEnabled: false,
+        note: options.note || `Semi-auto trigger | ${suggestion.summary}`,
+      });
+      entry.state = 'Trigger-prepared';
+      setBlotter((current) => [entry, ...current].slice(0, 30));
+      toast.success(`${formatTerminalOrder(entry)} queued from hedge trigger.`);
+      return;
+    }
+
+    toast.success('Suggested hedge loaded into the order ticket.');
   };
 
   const handleOptionChainAction = (contract) => {
@@ -358,6 +431,43 @@ export default function TradingTerminal() {
   const handleRefresh = () => {
     setRefreshPulse((current) => current + 1);
   };
+
+  useEffect(() => {
+    if (!automationSettings.autoMonitoring || !automationSettings.semiAutoTrigger) return;
+    if (!triggerReady || cooldownActive) return;
+    if (!deltaAssistant.hedgeSuggestion?.key) return;
+    if (automationSettings.lastTriggeredSignature === deltaAssistant.hedgeSuggestion.key) return;
+
+    const nextStamp = new Date().toISOString();
+    setAutomationSettings((current) => ({
+      ...current,
+      lastTriggeredAt: nextStamp,
+      lastTriggeredSignature: deltaAssistant.hedgeSuggestion.key,
+    }));
+
+    if (!executionGuard.liveMode && automationSettings.autoPreparePaperTrades) {
+      handlePrepareHedge(deltaAssistant.hedgeSuggestion, {
+        queuePaper: true,
+        note: `Auto-monitor breach | ${deltaAssistant.breachReasons[0] || 'Threshold exceeded'}`,
+      });
+      return;
+    }
+
+    handlePrepareHedge(deltaAssistant.hedgeSuggestion, {
+      note: `Review trigger | ${deltaAssistant.breachReasons[0] || 'Threshold exceeded'}`,
+    });
+    toast.warning('Semi-auto trigger prepared the next hedge in the ticket. Review before routing.');
+  }, [
+    automationSettings.autoMonitoring,
+    automationSettings.autoPreparePaperTrades,
+    automationSettings.lastTriggeredSignature,
+    automationSettings.semiAutoTrigger,
+    cooldownActive,
+    deltaAssistant.breachReasons,
+    deltaAssistant.hedgeSuggestion,
+    executionGuard.liveMode,
+    triggerReady,
+  ]);
 
   return (
     <div className="space-y-6">
@@ -719,6 +829,258 @@ export default function TradingTerminal() {
             ) : null}
           </Section>
         </div>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <Section
+          title="Delta hedge assistant"
+          subtitle="Phase 2: net delta, hedge suggestions, one-click preparation, and threshold-aware review."
+          action={(
+            <Badge className={`rounded-full ${triggerReady ? 'bg-rose-400/15 text-rose-100' : 'bg-emerald-400/15 text-emerald-100'}`}>
+              <Gauge className="mr-2 inline h-4 w-4" />
+              {triggerReady ? 'Threshold breach' : 'Within range'}
+            </Badge>
+          )}
+        >
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <Stat label="Net delta" value={deltaAssistant.netDelta.toFixed(0)} note={`Lot equivalent ${deltaAssistant.lotEquivalent.toFixed(2)}`} tone={Math.abs(deltaAssistant.netDelta) > Number(automationSettings.maxNetDelta || 0) ? 'rose' : 'emerald'} />
+            <Stat label="Net gamma" value={deltaAssistant.netGamma.toFixed(2)} note={`Limit ${Number(automationSettings.maxAbsGamma || 0).toFixed(2)}`} tone={Math.abs(deltaAssistant.netGamma) > Number(automationSettings.maxAbsGamma || 0) ? 'rose' : 'slate'} />
+            <Stat label="Net theta" value={deltaAssistant.netTheta.toFixed(2)} note="Time-decay contribution" tone="amber" />
+            <Stat label="Net vega" value={deltaAssistant.netVega.toFixed(2)} note="Volatility sensitivity" tone="cyan" />
+          </div>
+
+          {deltaAssistant.breachReasons.length ? (
+            <div className="mt-4 rounded-[22px] border border-rose-400/20 bg-rose-400/10 p-4 text-sm text-rose-100">
+              <p className="font-medium text-white">Active risk breaches</p>
+              <div className="mt-3 space-y-2">
+                {deltaAssistant.breachReasons.map((reason) => (
+                  <p key={reason}>- {reason}</p>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 rounded-[22px] border border-emerald-400/20 bg-emerald-400/10 p-4 text-sm text-emerald-100">
+              Net exposure is inside the current phase-2 thresholds.
+            </div>
+          )}
+
+          <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+            <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-white">Hedge suggestion</p>
+                  <p className="mt-1 text-sm text-slate-400">Semi-auto recommendation based on current net delta.</p>
+                </div>
+                <Sparkles className="h-5 w-5 text-cyan-300" />
+              </div>
+
+              {deltaAssistant.hedgeSuggestion ? (
+                <div className="mt-4 space-y-3">
+                  <div className="rounded-[18px] border border-white/8 bg-[#101925] p-4">
+                    <p className="text-sm font-medium text-white">{deltaAssistant.hedgeSuggestion.summary}</p>
+                    <p className="mt-2 text-sm text-slate-300">{deltaAssistant.hedgeSuggestion.rationale}</p>
+                    <div className="mt-3 grid gap-2 md:grid-cols-2">
+                      <p className="text-sm text-slate-300">Before <span className="font-semibold text-rose-200">{deltaAssistant.hedgeSuggestion.beforeDelta.toFixed(0)}</span></p>
+                      <p className="text-sm text-slate-300">After <span className="font-semibold text-emerald-200">{deltaAssistant.hedgeSuggestion.estimatedAfterDelta.toFixed(0)}</span></p>
+                    </div>
+                    <p className="mt-3 text-xs uppercase tracking-[0.18em] text-slate-500">Suggested contract</p>
+                    <p className="mt-2 text-sm font-semibold text-white">
+                      {deltaAssistant.hedgeSuggestion.contract.action} {deltaAssistant.hedgeSuggestion.contract.quantity} {deltaAssistant.hedgeSuggestion.contract.contractSymbol}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    <Button
+                      onClick={() => handlePrepareHedge(deltaAssistant.hedgeSuggestion)}
+                      className="rounded-2xl bg-cyan-300 text-slate-950 hover:bg-cyan-200"
+                    >
+                      <Target className="h-4 w-4" />
+                      Prepare hedge
+                    </Button>
+                    {!executionGuard.liveMode ? (
+                      <Button
+                        variant="outline"
+                        onClick={() => handlePrepareHedge(deltaAssistant.hedgeSuggestion, { queuePaper: true })}
+                        className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"
+                      >
+                        <Layers3 className="h-4 w-4" />
+                        Queue paper hedge
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-4 rounded-[18px] border border-dashed border-white/10 bg-white/[0.03] p-4 text-sm text-slate-400">
+                  No hedge suggestion yet. Connect broker positions and live structure for the selected underlying.
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-white">Position intelligence</p>
+                  <p className="mt-1 text-sm text-slate-400">Approximate delta contributions from the current broker structure.</p>
+                </div>
+                <Radar className="h-5 w-5 text-amber-300" />
+              </div>
+
+              {deltaAssistant.positions.length ? (
+                <div className="mt-4 overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="text-left text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                      <tr>
+                        <th className="px-3 py-3">Contract</th>
+                        <th className="px-3 py-3">Qty</th>
+                        <th className="px-3 py-3">Delta</th>
+                        <th className="px-3 py-3">Gamma</th>
+                        <th className="px-3 py-3">Source</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {deltaAssistant.positions.slice(0, 8).map((row) => (
+                        <tr key={row.key} className="border-t border-white/6 text-slate-300">
+                          <td className="px-3 py-3 font-medium text-white">{row.symbol}</td>
+                          <td className="px-3 py-3">{row.quantity}</td>
+                          <td className={`px-3 py-3 font-medium ${Number(row.delta || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{Number(row.delta || 0).toFixed(0)}</td>
+                          <td className="px-3 py-3 text-cyan-300">{Number(row.gamma || 0).toFixed(2)}</td>
+                          <td className="px-3 py-3 text-xs uppercase tracking-[0.16em] text-slate-500">{row.pricingSource}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="mt-4 rounded-[18px] border border-dashed border-white/10 bg-white/[0.03] p-4 text-sm text-slate-400">
+                  Broker positions for this underlying have not been matched yet.
+                </div>
+              )}
+            </div>
+          </div>
+        </Section>
+
+        <Section
+          title="Controlled automation"
+          subtitle="Phase 3: auto-monitoring, semi-auto hedge triggers, and paper-first automation gates."
+          action={(
+            <Badge className={`rounded-full ${automationSettings.autoMonitoring ? 'bg-cyan-300/15 text-cyan-100' : 'bg-white/10 text-slate-100'}`}>
+              <Bot className="mr-2 inline h-4 w-4" />
+              {automationSettings.autoMonitoring ? 'Monitoring on' : 'Monitoring off'}
+            </Badge>
+          )}
+        >
+          <div className="grid gap-4 xl:grid-cols-2">
+            <div className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-sm text-slate-300">Max net delta</span>
+                  <Input
+                    type="number"
+                    value={automationSettings.maxNetDelta}
+                    onChange={(event) => setAutomationSettings((current) => ({ ...current, maxNetDelta: Number(event.target.value || 0) }))}
+                    className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm text-slate-300">Max abs gamma</span>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    value={automationSettings.maxAbsGamma}
+                    onChange={(event) => setAutomationSettings((current) => ({ ...current, maxAbsGamma: Number(event.target.value || 0) }))}
+                    className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm text-slate-300">Max open loss</span>
+                  <Input
+                    type="number"
+                    value={automationSettings.maxOpenLoss}
+                    onChange={(event) => setAutomationSettings((current) => ({ ...current, maxOpenLoss: Number(event.target.value || 0) }))}
+                    className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm text-slate-300">Trigger cooldown (min)</span>
+                  <Input
+                    type="number"
+                    value={automationSettings.triggerCooldownMinutes}
+                    onChange={(event) => setAutomationSettings((current) => ({ ...current, triggerCooldownMinutes: Number(event.target.value || 1) }))}
+                    className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
+                  />
+                </label>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-3">
+                <Button
+                  variant="outline"
+                  onClick={() => setAutomationSettings((current) => ({ ...current, autoMonitoring: !current.autoMonitoring }))}
+                  className={`rounded-2xl border-white/10 ${automationSettings.autoMonitoring ? 'bg-cyan-300/15 text-cyan-100 hover:bg-cyan-300/20' : 'bg-white/5 text-white hover:bg-white/10'}`}
+                >
+                  {automationSettings.autoMonitoring ? 'Auto-monitoring on' : 'Auto-monitoring off'}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setAutomationSettings((current) => ({ ...current, semiAutoTrigger: !current.semiAutoTrigger }))}
+                  className={`rounded-2xl border-white/10 ${automationSettings.semiAutoTrigger ? 'bg-amber-300/15 text-amber-100 hover:bg-amber-300/20' : 'bg-white/5 text-white hover:bg-white/10'}`}
+                >
+                  {automationSettings.semiAutoTrigger ? 'Triggers armed' : 'Triggers paused'}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setAutomationSettings((current) => ({ ...current, autoPreparePaperTrades: !current.autoPreparePaperTrades }))}
+                  className={`rounded-2xl border-white/10 ${automationSettings.autoPreparePaperTrades ? 'bg-emerald-400/15 text-emerald-100 hover:bg-emerald-400/20' : 'bg-white/5 text-white hover:bg-white/10'}`}
+                >
+                  {automationSettings.autoPreparePaperTrades ? 'Paper prep on' : 'Paper prep off'}
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="rounded-[22px] border border-white/8 bg-[#101925] p-4">
+                <p className="text-sm font-semibold text-white">Automation state</p>
+                <div className="mt-3 space-y-2 text-sm text-slate-300">
+                  <p>- Monitoring: {automationSettings.autoMonitoring ? 'watching thresholds continuously' : 'manual checks only'}</p>
+                  <p>- Trigger action: {automationSettings.semiAutoTrigger ? 'prepare next hedge when breached' : 'alert only'}</p>
+                  <p>- Live behavior: never auto-send; operator still confirms every live order.</p>
+                  <p>- Last trigger: {automationSettings.lastTriggeredAt ? formatDateTime(automationSettings.lastTriggeredAt) : '--'}</p>
+                </div>
+              </div>
+
+              <div className={`rounded-[22px] border p-4 ${triggerReady ? 'border-amber-300/20 bg-amber-300/10 text-amber-100' : 'border-white/8 bg-white/[0.03] text-slate-300'}`}>
+                <p className="text-sm font-semibold text-white">Semi-auto trigger status</p>
+                <p className="mt-2 text-sm">
+                  {triggerReady
+                    ? cooldownActive
+                      ? 'A threshold breach is active, but the trigger is in cooldown to avoid duplicate staging.'
+                      : 'Threshold breach detected. The desk is ready to prepare the next hedge.'
+                    : 'No threshold breach is active right now.'}
+                </p>
+                {triggerReady ? (
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <Button
+                      onClick={() => handlePrepareHedge(deltaAssistant.hedgeSuggestion, {
+                        queuePaper: !executionGuard.liveMode,
+                        note: `Manual trigger | ${deltaAssistant.breachReasons[0] || 'Threshold exceeded'}`,
+                      })}
+                      className="rounded-2xl bg-amber-300 text-slate-950 hover:bg-amber-200"
+                    >
+                      <Target className="h-4 w-4" />
+                      Run trigger now
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setAutomationSettings((current) => ({ ...current, lastTriggeredAt: null, lastTriggeredSignature: '' }))}
+                      className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"
+                    >
+                      Reset cooldown
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </Section>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
