@@ -345,7 +345,7 @@ export default function AlgoTrading() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 rounded-[40px] border border-[#1a2633] bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.08),transparent_18%),radial-gradient(circle_at_top_right,rgba(245,158,11,0.08),transparent_22%),linear-gradient(180deg,#07111a_0%,#091520_52%,#0b1822_100%)] p-4 text-white shadow-[0_32px_90px_rgba(0,0,0,0.18)] md:p-6">
       <section className="rounded-[36px] border border-white/10 bg-[linear-gradient(135deg,rgba(34,211,238,0.18),rgba(245,158,11,0.16)_48%,rgba(15,23,42,0.96))] p-6 shadow-[0_28px_90px_rgba(0,0,0,0.28)]">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-4xl">
