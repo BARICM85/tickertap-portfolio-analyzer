@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowUpRight,
@@ -101,6 +101,10 @@ function formatDateTime(value) {
   });
 }
 
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
 export default function TradingTerminal() {
   const [trackedSymbols, setTrackedSymbols] = useState(() => readTrackedSymbols());
   const [selectedSymbol, setSelectedSymbol] = useState(() => readTrackedSymbols()[0] || 'NIFTY');
@@ -113,6 +117,12 @@ export default function TradingTerminal() {
   const [refreshPulse, setRefreshPulse] = useState(0);
   const [confirmLiveOpen, setConfirmLiveOpen] = useState(false);
   const [placingLive, setPlacingLive] = useState(false);
+  const [ticketPosition, setTicketPosition] = useState({ x: 0, y: 24 });
+  const [ticketInitialized, setTicketInitialized] = useState(false);
+  const [ticketDragging, setTicketDragging] = useState(false);
+  const terminalCanvasRef = useRef(null);
+  const ticketPanelRef = useRef(null);
+  const dragStateRef = useRef(null);
 
   useEffect(() => {
     writeTrackedSymbols(trackedSymbols);
@@ -133,6 +143,74 @@ export default function TradingTerminal() {
   useEffect(() => {
     setTicket((current) => ({ ...current, symbol: selectedSymbol }));
   }, [selectedSymbol]);
+
+  useEffect(() => {
+    const syncFloatingTicket = () => {
+      const canvas = terminalCanvasRef.current;
+      const panel = ticketPanelRef.current;
+      if (!canvas || !panel || typeof window === 'undefined') return;
+      if (window.innerWidth < 1280) return;
+
+      const canvasWidth = canvas.clientWidth;
+      const panelWidth = panel.offsetWidth || 336;
+      const panelHeight = panel.offsetHeight || 0;
+      const maxX = Math.max(16, canvasWidth - panelWidth - 16);
+      const maxY = Math.max(24, canvas.scrollHeight - panelHeight - 16);
+
+      setTicketPosition((current) => {
+        if (!ticketInitialized) {
+          return { x: maxX, y: 24 };
+        }
+
+        return {
+          x: clamp(current.x, 16, maxX),
+          y: clamp(current.y, 24, maxY),
+        };
+      });
+
+      if (!ticketInitialized) {
+        setTicketInitialized(true);
+      }
+    };
+
+    syncFloatingTicket();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', syncFloatingTicket);
+      return () => window.removeEventListener('resize', syncFloatingTicket);
+    }
+    return undefined;
+  }, [ticketInitialized, optionOverview?.rows?.length, futuresBoard?.rows?.length, positions.length]);
+
+  useEffect(() => {
+    const handlePointerMove = (event) => {
+      const dragState = dragStateRef.current;
+      const canvas = terminalCanvasRef.current;
+      const panel = ticketPanelRef.current;
+      if (!dragState || !canvas || !panel) return;
+
+      const nextX = event.clientX - dragState.offsetX;
+      const nextY = event.clientY - dragState.offsetY;
+      const maxX = Math.max(16, canvas.clientWidth - panel.offsetWidth - 16);
+      const maxY = Math.max(24, canvas.scrollHeight - panel.offsetHeight - 16);
+
+      setTicketPosition({
+        x: clamp(nextX, 16, maxX),
+        y: clamp(nextY, 24, maxY),
+      });
+    };
+
+    const handlePointerUp = () => {
+      dragStateRef.current = null;
+      setTicketDragging(false);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, []);
 
   const { data: zerodhaStatus, isFetching: statusFetching } = useQuery({
     queryKey: ['terminal-zerodha-status', refreshPulse],
@@ -281,6 +359,19 @@ export default function TradingTerminal() {
   const handleDeleteBlotterEntry = (entryId) => {
     setBlotter((current) => current.filter((row) => row.id !== entryId));
     toast.success('Blotter entry deleted.');
+  };
+
+  const handleStartTicketDrag = (event) => {
+    if (typeof window === 'undefined' || window.innerWidth < 1280) return;
+    const panel = ticketPanelRef.current;
+    if (!panel) return;
+
+    const panelRect = panel.getBoundingClientRect();
+    dragStateRef.current = {
+      offsetX: event.clientX - panelRect.left,
+      offsetY: event.clientY - panelRect.top,
+    };
+    setTicketDragging(true);
   };
 
   const handleTrackSymbol = (item) => {
@@ -469,6 +560,190 @@ export default function TradingTerminal() {
     triggerReady,
   ]);
 
+  const renderOrderTicket = (floating = false) => (
+    <Section
+      title="Order ticket"
+      subtitle="Paper-first ticket modeled for F&O desk usage."
+      className={floating ? 'h-full' : ''}
+      action={floating ? (
+        <button
+          type="button"
+          onPointerDown={handleStartTicketDrag}
+          className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em] ${ticketDragging ? 'border-cyan-300/40 bg-cyan-300/12 text-cyan-100' : 'border-white/10 bg-white/[0.04] text-slate-300'}`}
+        >
+          Drag ticket
+        </button>
+      ) : null}
+    >
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-1">
+        <label className="space-y-2">
+          <span className="text-sm text-slate-300">Segment</span>
+          <Select value={ticket.segment} onValueChange={(value) => setTicket((current) => ({ ...current, segment: value }))}>
+            <SelectTrigger className="h-11 rounded-2xl border-white/10 bg-white/5 text-white">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="OPTIONS">OPTIONS</SelectItem>
+              <SelectItem value="FUTURES">FUTURES</SelectItem>
+            </SelectContent>
+          </Select>
+        </label>
+
+        <label className="space-y-2">
+          <span className="text-sm text-slate-300">Side</span>
+          <Select value={ticket.side} onValueChange={(value) => setTicket((current) => ({ ...current, side: value }))}>
+            <SelectTrigger className="h-11 rounded-2xl border-white/10 bg-white/5 text-white">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="BUY">BUY</SelectItem>
+              <SelectItem value="SELL">SELL</SelectItem>
+            </SelectContent>
+          </Select>
+        </label>
+
+        <label className="space-y-2">
+          <span className="text-sm text-slate-300">Order type</span>
+          <Select value={ticket.orderType} onValueChange={(value) => setTicket((current) => ({ ...current, orderType: value }))}>
+            <SelectTrigger className="h-11 rounded-2xl border-white/10 bg-white/5 text-white">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="MARKET">MARKET</SelectItem>
+              <SelectItem value="LIMIT">LIMIT</SelectItem>
+              <SelectItem value="SL">SL</SelectItem>
+            </SelectContent>
+          </Select>
+        </label>
+
+        <label className="space-y-2">
+          <span className="text-sm text-slate-300">Product</span>
+          <Select value={ticket.product} onValueChange={(value) => setTicket((current) => ({ ...current, product: value }))}>
+            <SelectTrigger className="h-11 rounded-2xl border-white/10 bg-white/5 text-white">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="NRML">NRML</SelectItem>
+              <SelectItem value="MIS">MIS</SelectItem>
+            </SelectContent>
+          </Select>
+        </label>
+
+        <label className="space-y-2">
+          <span className="text-sm text-slate-300">Contract symbol</span>
+          <Input
+            value={ticket.contractSymbol}
+            onChange={(event) => setTicket((current) => ({ ...current, contractSymbol: event.target.value.toUpperCase() }))}
+            className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
+            placeholder="Example: NIFTY25APR24500CE"
+          />
+        </label>
+
+        <label className="space-y-2">
+          <span className="text-sm text-slate-300">Quantity</span>
+          <Input
+            type="number"
+            value={ticket.quantity}
+            onChange={(event) => setTicket((current) => ({ ...current, quantity: event.target.value }))}
+            className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
+          />
+        </label>
+
+        <label className="space-y-2">
+          <span className="text-sm text-slate-300">Trigger price</span>
+          <Input
+            type="number"
+            value={ticket.triggerPrice}
+            onChange={(event) => setTicket((current) => ({ ...current, triggerPrice: event.target.value }))}
+            className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
+          />
+        </label>
+
+        <label className="space-y-2">
+          <span className="text-sm text-slate-300">Limit price</span>
+          <Input
+            type="number"
+            value={ticket.price}
+            onChange={(event) => setTicket((current) => ({ ...current, price: event.target.value }))}
+            className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
+          />
+        </label>
+      </div>
+
+      <label className="mt-3 block space-y-2">
+        <span className="text-sm text-slate-300">Operator note</span>
+        <Input
+          value={ticket.note}
+          onChange={(event) => setTicket((current) => ({ ...current, note: event.target.value }))}
+          className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
+          placeholder="Example: short gamma scalp or expiry hedge"
+        />
+      </label>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-1">
+        <Stat label="Route state" value={executionModeLabel} note={brokerConnected ? 'Live routing requires arming and confirmation.' : 'Broker disconnected, paper flow only.'} tone={executionGuard.liveMode ? 'amber' : 'slate'} />
+        <Stat label="Blotter count" value={String(blotterCount)} note="Saved locally for operator review" tone="slate" />
+        <Stat label="Live guard" value={liveModeArmed ? 'Armed' : 'Locked'} note="Type LIVE and arm before sending." tone={liveModeArmed ? 'rose' : 'cyan'} />
+      </div>
+
+      <div className="mt-4 rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-white">Live execution safety gate</p>
+            <p className="mt-1 text-sm text-slate-400">Keep paper mode as default. Live routing requires an explicit operator arm.</p>
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => setExecutionGuard((current) => ({ ...current, liveMode: !current.liveMode, armed: false }))}
+            className={`rounded-2xl border-white/10 ${executionGuard.liveMode ? 'bg-rose-400/15 text-rose-100 hover:bg-rose-400/20' : 'bg-white/5 text-white hover:bg-white/10'}`}
+          >
+            <ShieldCheck className="h-4 w-4" />
+            {executionGuard.liveMode ? 'Live mode on' : 'Paper mode'}
+          </Button>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
+          <Input
+            value={armCode}
+            onChange={(event) => setArmCode(event.target.value)}
+            className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
+            placeholder="Type LIVE to arm order routing"
+          />
+          <Button
+            variant="outline"
+            onClick={() => setExecutionGuard((current) => ({ ...current, armed: current.liveMode && armCode.trim().toUpperCase() === 'LIVE' }))}
+            disabled={!executionGuard.liveMode}
+            className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10 disabled:opacity-50"
+          >
+            {executionGuard.armed ? 'Armed' : 'Arm live'}
+          </Button>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-3">
+        <Button onClick={handleSaveTicket} className="rounded-2xl bg-amber-300 text-slate-950 hover:bg-amber-200">
+          <Layers3 className="h-4 w-4" />
+          Add to blotter
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => setConfirmLiveOpen(true)}
+          disabled={!brokerConnected || !executionGuard.liveMode || !ticket.contractSymbol}
+          className="rounded-2xl border-rose-400/30 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <ArrowUpRight className="h-4 w-4" />
+          Place live order
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => setTicket(createTicketDraft(selectedSymbol))}
+          className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"
+        >
+          Reset
+        </Button>
+      </div>
+    </Section>
+  );
+
   return (
     <div className="space-y-6 rounded-[40px] border border-[#1a2633] bg-[radial-gradient(circle_at_top_left,rgba(45,212,191,0.08),transparent_18%),radial-gradient(circle_at_top_right,rgba(245,158,11,0.08),transparent_22%),linear-gradient(180deg,#07111a_0%,#091520_52%,#0b1822_100%)] p-4 text-white shadow-[0_32px_90px_rgba(0,0,0,0.18)] md:p-6">
       <section className="rounded-[34px] border border-white/10 bg-[linear-gradient(135deg,rgba(56,189,248,0.18),rgba(15,23,42,0.96)_50%,rgba(245,158,11,0.14))] p-6 shadow-[0_32px_90px_rgba(0,0,0,0.28)]">
@@ -504,7 +779,7 @@ export default function TradingTerminal() {
         <Stat label="Execution" value={executionGuard.liveMode ? 'Live mode selected' : 'Paper mode'} note="Chain Buy / Sell follows this mode" tone={executionGuard.liveMode ? 'amber' : 'slate'} />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[0.86fr_1.55fr_0.95fr]">
+      <div ref={terminalCanvasRef} className="grid gap-6 xl:grid-cols-[0.86fr_2.14fr]">
         <Section
           title="Market board"
           subtitle="Track the underlyings you trade most often."
@@ -551,7 +826,7 @@ export default function TradingTerminal() {
           </div>
         </Section>
 
-        <div className="space-y-6">
+        <div className="space-y-6 xl:relative xl:pr-[22rem]">
           <Section
             title={`${selectedSymbol} execution matrix`}
             subtitle={terminalBias.note}
@@ -643,178 +918,19 @@ export default function TradingTerminal() {
           </Section>
 
           <OptionChainPanel stock={stock} onContractAction={handleOptionChainAction} />
+          <div className="xl:hidden">
+            {renderOrderTicket(false)}
+          </div>
+          <div
+            ref={ticketPanelRef}
+            className="hidden xl:block xl:absolute xl:z-30"
+            style={{ left: `${ticketPosition.x}px`, top: `${ticketPosition.y}px`, width: '20.5rem' }}
+          >
+            {renderOrderTicket(true)}
+          </div>
         </div>
 
         <div className="space-y-6">
-          <Section title="Order ticket" subtitle="Paper-first ticket modeled for F&O desk usage.">
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-1">
-              <label className="space-y-2">
-                <span className="text-sm text-slate-300">Segment</span>
-                <Select value={ticket.segment} onValueChange={(value) => setTicket((current) => ({ ...current, segment: value }))}>
-                  <SelectTrigger className="h-11 rounded-2xl border-white/10 bg-white/5 text-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="OPTIONS">OPTIONS</SelectItem>
-                    <SelectItem value="FUTURES">FUTURES</SelectItem>
-                  </SelectContent>
-                </Select>
-              </label>
-
-              <label className="space-y-2">
-                <span className="text-sm text-slate-300">Side</span>
-                <Select value={ticket.side} onValueChange={(value) => setTicket((current) => ({ ...current, side: value }))}>
-                  <SelectTrigger className="h-11 rounded-2xl border-white/10 bg-white/5 text-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="BUY">BUY</SelectItem>
-                    <SelectItem value="SELL">SELL</SelectItem>
-                  </SelectContent>
-                </Select>
-              </label>
-
-              <label className="space-y-2">
-                <span className="text-sm text-slate-300">Order type</span>
-                <Select value={ticket.orderType} onValueChange={(value) => setTicket((current) => ({ ...current, orderType: value }))}>
-                  <SelectTrigger className="h-11 rounded-2xl border-white/10 bg-white/5 text-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="MARKET">MARKET</SelectItem>
-                    <SelectItem value="LIMIT">LIMIT</SelectItem>
-                    <SelectItem value="SL">SL</SelectItem>
-                  </SelectContent>
-                </Select>
-              </label>
-
-              <label className="space-y-2">
-                <span className="text-sm text-slate-300">Product</span>
-                <Select value={ticket.product} onValueChange={(value) => setTicket((current) => ({ ...current, product: value }))}>
-                  <SelectTrigger className="h-11 rounded-2xl border-white/10 bg-white/5 text-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="NRML">NRML</SelectItem>
-                    <SelectItem value="MIS">MIS</SelectItem>
-                  </SelectContent>
-                </Select>
-              </label>
-
-              <label className="space-y-2">
-                <span className="text-sm text-slate-300">Contract symbol</span>
-                <Input
-                  value={ticket.contractSymbol}
-                  onChange={(event) => setTicket((current) => ({ ...current, contractSymbol: event.target.value.toUpperCase() }))}
-                  className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
-                  placeholder="Example: NIFTY25APR24500CE"
-                />
-              </label>
-
-              <label className="space-y-2">
-                <span className="text-sm text-slate-300">Quantity</span>
-                <Input
-                  type="number"
-                  value={ticket.quantity}
-                  onChange={(event) => setTicket((current) => ({ ...current, quantity: event.target.value }))}
-                  className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
-                />
-              </label>
-
-              <label className="space-y-2">
-                <span className="text-sm text-slate-300">Trigger price</span>
-                <Input
-                  type="number"
-                  value={ticket.triggerPrice}
-                  onChange={(event) => setTicket((current) => ({ ...current, triggerPrice: event.target.value }))}
-                  className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
-                />
-              </label>
-
-              <label className="space-y-2">
-                <span className="text-sm text-slate-300">Limit price</span>
-                <Input
-                  type="number"
-                  value={ticket.price}
-                  onChange={(event) => setTicket((current) => ({ ...current, price: event.target.value }))}
-                  className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
-                />
-              </label>
-            </div>
-
-            <label className="mt-3 block space-y-2">
-              <span className="text-sm text-slate-300">Operator note</span>
-              <Input
-                value={ticket.note}
-                onChange={(event) => setTicket((current) => ({ ...current, note: event.target.value }))}
-                className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
-                placeholder="Example: short gamma scalp or expiry hedge"
-              />
-            </label>
-
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-1">
-              <Stat label="Route state" value={executionModeLabel} note={brokerConnected ? 'Live routing requires arming and confirmation.' : 'Broker disconnected, paper flow only.'} tone={executionGuard.liveMode ? 'amber' : 'slate'} />
-              <Stat label="Blotter count" value={String(blotterCount)} note="Saved locally for operator review" tone="slate" />
-              <Stat label="Live guard" value={liveModeArmed ? 'Armed' : 'Locked'} note="Type LIVE and arm before sending." tone={liveModeArmed ? 'rose' : 'cyan'} />
-            </div>
-
-            <div className="mt-4 rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium text-white">Live execution safety gate</p>
-                  <p className="mt-1 text-sm text-slate-400">Keep paper mode as default. Live routing requires an explicit operator arm.</p>
-                </div>
-                <Button
-                  variant="outline"
-                  onClick={() => setExecutionGuard((current) => ({ ...current, liveMode: !current.liveMode, armed: false }))}
-                  className={`rounded-2xl border-white/10 ${executionGuard.liveMode ? 'bg-rose-400/15 text-rose-100 hover:bg-rose-400/20' : 'bg-white/5 text-white hover:bg-white/10'}`}
-                >
-                  <ShieldCheck className="h-4 w-4" />
-                  {executionGuard.liveMode ? 'Live mode on' : 'Paper mode'}
-                </Button>
-              </div>
-              <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
-                <Input
-                  value={armCode}
-                  onChange={(event) => setArmCode(event.target.value)}
-                  className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
-                  placeholder="Type LIVE to arm order routing"
-                />
-                <Button
-                  variant="outline"
-                  onClick={() => setExecutionGuard((current) => ({ ...current, armed: current.liveMode && armCode.trim().toUpperCase() === 'LIVE' }))}
-                  disabled={!executionGuard.liveMode}
-                  className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10 disabled:opacity-50"
-                >
-                  {executionGuard.armed ? 'Armed' : 'Arm live'}
-                </Button>
-              </div>
-            </div>
-
-            <div className="mt-4 flex gap-3">
-              <Button onClick={handleSaveTicket} className="rounded-2xl bg-amber-300 text-slate-950 hover:bg-amber-200">
-                <Layers3 className="h-4 w-4" />
-                Add to blotter
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setConfirmLiveOpen(true)}
-                disabled={!brokerConnected || !executionGuard.liveMode || !ticket.contractSymbol}
-                className="rounded-2xl border-rose-400/30 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <ArrowUpRight className="h-4 w-4" />
-                Place live order
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setTicket(createTicketDraft(selectedSymbol))}
-                className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"
-              >
-                Reset
-              </Button>
-            </div>
-          </Section>
-
           <Section title="Risk and funding" subtitle="Available cash, premium usage, exposure, and operator alerts.">
             <div className="space-y-3">
               <Stat label="Available" value={formatCurrency(margins.availableForTrade || 0)} note="Tradable cash after debits and premium" tone="emerald" />
