@@ -149,26 +149,26 @@ export default function Portfolio() {
       <section className="app-hero rounded-[36px] p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-amber-200/80">Portfolio operations</p>
-            <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white">Manage holdings with a cleaner, less cluttered workflow</h1>
+            <p className="text-xs uppercase tracking-[0.28em] text-orange-500/80">Portfolio operations</p>
+            <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-900">Manage holdings with a cleaner, easier-to-read workflow</h1>
             <p className="mt-3 max-w-2xl app-subtle-text">
               Add, import, refresh, and clean holdings from one place. This screen is tuned to feel more like an operations desk and less like a raw data form.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <Button variant="outline" onClick={() => exportPortfolio(stocks)} className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10">
+            <Button variant="outline" onClick={() => exportPortfolio(stocks)} className="rounded-2xl border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
               <Download />
               Export JSON
             </Button>
-            <Button variant="outline" onClick={() => setImportOpen(true)} className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10">
+            <Button variant="outline" onClick={() => setImportOpen(true)} className="rounded-2xl border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
               <FileSpreadsheet />
               Import
             </Button>
-            <Button variant="outline" onClick={() => setClearOpen(true)} disabled={stocks.length === 0} className="rounded-2xl border-rose-400/30 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20 disabled:text-slate-500">
+            <Button variant="outline" onClick={() => setClearOpen(true)} disabled={stocks.length === 0} className="rounded-2xl border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 disabled:text-slate-400">
               <Trash2 />
               Clear Portfolio
             </Button>
-            <Button onClick={() => setAddOpen(true)} className="rounded-2xl bg-amber-300 text-slate-950 hover:bg-amber-200">
+            <Button onClick={() => setAddOpen(true)} className="rounded-2xl bg-orange-500 text-white hover:bg-orange-600">
               <Plus />
               Add Holding
             </Button>
@@ -181,7 +181,7 @@ export default function Portfolio() {
             'Fetch Live Prices after imports or broker sync.',
             'Use Clear Portfolio only when you want a full reset.',
           ].map((item) => (
-            <div key={item} className="rounded-[22px] border border-white/8 bg-white/[0.04] px-4 py-3 text-sm text-slate-200">
+            <div key={item} className="rounded-[22px] border border-slate-200 bg-white/80 px-4 py-3 text-sm text-slate-700">
               {item}
             </div>
           ))}
@@ -197,8 +197,8 @@ export default function Portfolio() {
         ].map((card) => (
           <div key={card.label} className="app-panel rounded-[28px] p-5">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{card.label}</p>
-            <p className="mt-3 text-2xl font-semibold text-white">{card.value}</p>
-            <p className="mt-2 text-sm text-slate-400">{card.note}</p>
+            <p className="mt-3 text-2xl font-semibold text-slate-900">{card.value}</p>
+            <p className="mt-2 text-sm text-slate-500">{card.note}</p>
           </div>
         ))}
       </section>
@@ -238,8 +238,8 @@ export default function Portfolio() {
         ].map((card) => (
           <div key={card.label} className="app-panel rounded-[28px] p-5">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{card.label}</p>
-            <p className="mt-3 text-2xl font-semibold text-white">{card.value}</p>
-            <p className="mt-2 text-sm text-slate-400">{card.note}</p>
+            <p className="mt-3 text-2xl font-semibold text-slate-900">{card.value}</p>
+            <p className="mt-2 text-sm text-slate-500">{card.note}</p>
           </div>
         ))}
       </section>
@@ -252,10 +252,10 @@ export default function Portfolio() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search by symbol, company, or sector"
-              className="h-12 rounded-2xl border-white/10 bg-white/5 pl-11 text-white placeholder:text-slate-500"
+              className="h-12 rounded-2xl border-slate-200 bg-white pl-11 text-slate-900 placeholder:text-slate-400"
             />
           </div>
-          <Button onClick={refreshAll} disabled={refreshingId === 'all'} variant="outline" className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10">
+          <Button onClick={refreshAll} disabled={refreshingId === 'all'} variant="outline" className="rounded-2xl border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
             {refreshingId === 'all' ? <Loader2 className="animate-spin" /> : null}
             <Zap />
             Fetch Live Prices
@@ -281,9 +281,9 @@ export default function Portfolio() {
               text: 'Search by symbol, company, or sector to trim duplicate entries before syncing or exporting.',
             },
           ].map((item) => (
-            <div key={item.title} className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
-              <p className="font-medium text-white">{item.title}</p>
-              <p className="mt-2 text-sm text-slate-400">{item.text}</p>
+            <div key={item.title} className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-5">
+              <p className="font-medium text-slate-900">{item.title}</p>
+              <p className="mt-2 text-sm text-slate-500">{item.text}</p>
             </div>
           ))}
         </div>

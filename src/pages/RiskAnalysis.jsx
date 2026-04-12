@@ -78,16 +78,16 @@ export default function RiskAnalysis() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[36px] border border-white/10 bg-[#0b1624]/90 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.24)]">
+      <section className="app-hero rounded-[36px] p-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-amber-200/80">Risk lab</p>
-            <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white">Stress-test the portfolio before it surprises you</h1>
-            <p className="mt-3 max-w-3xl text-base leading-7 text-slate-300">
+            <p className="text-xs uppercase tracking-[0.28em] text-orange-500/80">Risk lab</p>
+            <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-900">Stress-test the portfolio before it surprises you</h1>
+            <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600">
               Review concentration, sector clustering, portfolio beta, and rebalance ideas in the same place you manage holdings.
             </p>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-300">
+          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
             Auto-calculated from current portfolio holdings
           </div>
         </div>
@@ -99,10 +99,10 @@ export default function RiskAnalysis() {
           { label: 'Diversification', value: `${report.diversification_score}/100`, note: 'Higher is healthier' },
           { label: 'Portfolio Beta', value: report.portfolio_beta.toFixed(2), note: 'Volatility vs benchmark' },
         ].map((card) => (
-          <div key={card.label} className="rounded-[28px] border border-white/10 bg-[#0b1624]/90 p-5">
+          <div key={card.label} className="app-panel rounded-[28px] p-5">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{card.label}</p>
-            <p className="mt-3 text-3xl font-semibold text-white">{card.value}</p>
-            <p className="mt-2 text-sm text-slate-400">{card.note}</p>
+            <p className="mt-3 text-3xl font-semibold text-slate-900">{card.value}</p>
+            <p className="mt-2 text-sm text-slate-500">{card.note}</p>
           </div>
         ))}
       </section>

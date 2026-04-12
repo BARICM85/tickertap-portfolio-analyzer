@@ -113,11 +113,11 @@ export default function WatchlistPage() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[36px] border border-white/10 bg-[#0b1624]/90 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.24)]">
+      <section className="app-hero rounded-[36px] p-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-amber-200/80">Opportunity pipeline</p>
-            <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white">Track future buys before they become holdings</h1>
+            <p className="text-xs uppercase tracking-[0.28em] text-orange-500/80">Opportunity pipeline</p>
+            <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-900">Track future buys before they become holdings</h1>
             <p className="mt-3 max-w-3xl text-base leading-7 text-slate-300">
               Monitor target prices, compare them with the local market snapshot, and promote names into the portfolio when they hit your zone.
             </p>
