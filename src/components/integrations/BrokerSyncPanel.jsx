@@ -58,11 +58,29 @@ export default function BrokerSyncPanel({ currentStocks = [], onSynced }) {
       const brokerHoldings = holdingsData?.data || [];
       let createdCount = 0;
       let updatedCount = 0;
+      const diagnostics = [];
+      const keyCounts = new Map();
 
       for (const item of brokerHoldings) {
         const mapped = mapZerodhaHoldingToPortfolio(item);
         const mappedKey = getHoldingKey(mapped);
         const existing = currentStocks.find((stock) => getHoldingKey(stock) === mappedKey);
+        keyCounts.set(mappedKey, (keyCounts.get(mappedKey) || 0) + 1);
+
+        diagnostics.push({
+          key: mappedKey,
+          exchange: mapped.exchange || item.exchange || '--',
+          symbol: mapped.symbol || item.tradingsymbol || item.symbol || '--',
+          companyName: mapped.name || item.company_name || '--',
+          quantity: Number(item.quantity ?? item.used_quantity ?? item.t1_quantity ?? mapped.quantity ?? 0),
+          averagePrice: Number(item.average_price ?? item.t1_average_price ?? mapped.buy_price ?? 0),
+          lastPrice: Number(item.last_price ?? item.close_price ?? mapped.current_price ?? 0),
+          isin: String(item.isin || '').trim() || '--',
+          status: existing ? 'update' : 'create',
+          queryHint: mappedKey,
+          rawTradingSymbol: item.tradingsymbol || item.symbol || '--',
+          rawExchange: item.exchange || '--',
+        });
 
         if (existing) {
           updatedCount += 1;
@@ -78,8 +96,39 @@ export default function BrokerSyncPanel({ currentStocks = [], onSynced }) {
         }
       }
 
+      const duplicateDiagnostics = diagnostics.filter((row) => (keyCounts.get(row.key) || 0) > 1);
+      const reviewDiagnostics = diagnostics.filter((row) => (
+        !row.symbol
+        || row.symbol === '--'
+        || !Number.isFinite(Number(row.quantity))
+        || Number(row.quantity) <= 0
+        || !['NSE', 'BSE'].includes(String(row.exchange || '').trim().toUpperCase())
+        || (keyCounts.get(row.key) || 0) > 1
+      ));
+      const queryList = diagnostics.map((row) => row.queryHint);
+
+      console.groupCollapsed('[TickerTap] Zerodha holdings sync diagnostics');
+      console.info('Counts', {
+        rawHoldings: brokerHoldings.length,
+        uniqueKeys: new Set(diagnostics.map((row) => row.key)).size,
+        createdCount,
+        updatedCount,
+      });
+      console.log('[TickerTap] Zerodha query list:', queryList);
+      console.table(diagnostics);
+      if (duplicateDiagnostics.length) {
+        console.warn('[TickerTap] Duplicate Zerodha holding keys detected:');
+        console.table(duplicateDiagnostics);
+      }
+      if (reviewDiagnostics.length) {
+        console.warn('[TickerTap] Review these holdings first:');
+        console.table(reviewDiagnostics);
+        console.log('[TickerTap] Review query list:', reviewDiagnostics.map((row) => row.queryHint));
+      }
+      console.groupEnd();
+
       const netPositions = positionsData?.data?.net || [];
-      toast.success(`Zerodha synced. ${createdCount} added, ${updatedCount} updated, ${netPositions.length} net positions fetched.`);
+      toast.success(`Zerodha synced. ${createdCount} added, ${updatedCount} updated, ${netPositions.length} net positions fetched. Open console for the holding query list.`);
       await onSynced?.();
       await loadStatus();
     } catch (error) {
