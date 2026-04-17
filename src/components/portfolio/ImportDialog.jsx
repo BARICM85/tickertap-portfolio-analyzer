@@ -25,16 +25,46 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function normalizePreferredExchange(value = '') {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (!normalized) return '';
+  if (normalized === 'BOM' || normalized === 'BO') return 'BSE';
+  if (normalized === 'NS') return 'NSE';
+  return ['NSE', 'BSE'].includes(normalized) ? normalized : '';
+}
+
+function getRowResolverInput(row = {}) {
+  const rawStock = String(row.Stock || '').trim();
+  const preferredExchange = normalizePreferredExchange(
+    row.Exchange
+      ?? row.EXCHANGE
+      ?? row.Exch
+      ?? row.EXCH
+      ?? row['Stock Exchange']
+      ?? row.Market,
+  );
+
+  return {
+    rawStock,
+    preferredExchange,
+    key: `${preferredExchange || 'AUTO'}::${rawStock}`,
+  };
+}
+
 async function resolveImportRows(rows = []) {
   const uniqueInputs = [...new Set(
     rows
-      .map((row) => String(row.Stock || '').trim())
+      .map((row) => getRowResolverInput(row))
+      .map((item) => item.key)
       .filter(Boolean),
   )];
 
   const resolvedEntries = await Promise.all(uniqueInputs.map(async (input) => {
-    const resolved = await resolveStockInputAsync(input);
-    const suggestions = resolved ? [] : await searchStockSuggestionsAsync(input, 3);
+    const [preferredExchange, ...rest] = String(input).split('::');
+    const rawInput = rest.join('::');
+    const exchange = preferredExchange === 'AUTO' ? '' : preferredExchange;
+    const resolved = await resolveStockInputAsync(rawInput, { preferredExchange: exchange });
+    const suggestions = resolved ? [] : await searchStockSuggestionsAsync(rawInput, 3, { preferredExchange: exchange });
     return [input, { resolved, suggestions }];
   }));
 
@@ -47,7 +77,7 @@ async function aggregateWorkbookRows(rows = []) {
   const resolvedMap = await resolveImportRows(rows);
 
   for (const [index, row] of rows.entries()) {
-    const rawStock = String(row.Stock || '').trim();
+    const { rawStock, preferredExchange, key: resolverKey } = getRowResolverInput(row);
     if (!rawStock) continue;
 
     const broker = String(row.BROKER || '').trim().toUpperCase() || undefined;
@@ -57,7 +87,7 @@ async function aggregateWorkbookRows(rows = []) {
     const buyDate = excelSerialToIso(row['Buy Date']);
     if (!quantity || !buyPrice) continue;
 
-    const resolvedEntry = resolvedMap.get(rawStock);
+    const resolvedEntry = resolvedMap.get(resolverKey);
     const resolved = resolvedEntry?.resolved || null;
     if (!resolved) {
       unresolved.push({
@@ -70,11 +100,13 @@ async function aggregateWorkbookRows(rows = []) {
 
     const symbol = resolved.symbol;
     const profile = resolved || getStockProfile(symbol);
-    const existing = grouped.get(symbol) || {
+    const exchange = resolved.exchange || preferredExchange || profile.exchange;
+    const holdingKey = `${String(exchange || 'NSE').trim().toUpperCase()}:${symbol}`;
+    const existing = grouped.get(holdingKey) || {
       symbol,
       name: resolved.name || profile.name,
       sector: resolved.sector || profile.sector,
-      exchange: resolved.exchange || profile.exchange,
+      exchange,
       current_price: profile.current_price,
       beta: profile.beta,
       pe_ratio: profile.pe_ratio,
@@ -95,7 +127,7 @@ async function aggregateWorkbookRows(rows = []) {
       buy_value: buyValue,
       buy_date: buyDate,
     });
-    grouped.set(symbol, existing);
+    grouped.set(holdingKey, existing);
   }
 
   return {

@@ -264,6 +264,34 @@ function normalizeSearchText(value = '') {
     .replace(/[^A-Z0-9]/g, '');
 }
 
+function normalizeExchange(value = '') {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (!normalized) return '';
+  if (normalized === 'BOM' || normalized === 'BO') return 'BSE';
+  if (normalized === 'NS') return 'NSE';
+  return normalized;
+}
+
+function parseExchangeQualifiedInput(input = '') {
+  const raw = String(input || '').trim();
+  if (!raw) return { raw: '', query: '', preferredExchange: '' };
+
+  const prefixedMatch = raw.match(/^(NSE|BSE|BOM|NS|BO)\s*[:\-]\s*(.+)$/i);
+  if (prefixedMatch) {
+    return {
+      raw,
+      query: String(prefixedMatch[2] || '').trim(),
+      preferredExchange: normalizeExchange(prefixedMatch[1]),
+    };
+  }
+
+  return {
+    raw,
+    query: raw,
+    preferredExchange: '',
+  };
+}
+
 function looksLikeTradingSymbol(value = '') {
   const raw = String(value || '').trim().toUpperCase();
   if (!raw) return false;
@@ -271,17 +299,20 @@ function looksLikeTradingSymbol(value = '') {
   return /^[A-Z0-9&.-]{1,24}$/.test(raw);
 }
 
-export function searchStockCatalog(query = '', limit = 8) {
-  const needle = query.trim().toUpperCase();
+export function searchStockCatalog(query = '', limit = 8, options = {}) {
+  const { query: parsedQuery, preferredExchange: parsedExchange } = parseExchangeQualifiedInput(query);
+  const preferredExchange = normalizeExchange(options.preferredExchange || parsedExchange);
+  const needle = parsedQuery.trim().toUpperCase();
   if (!needle) return getCatalogSnapshot().slice(0, limit);
 
   return getCatalogSnapshot()
     .map((item) => {
       const symbolScore = item.symbol.startsWith(needle) ? 4 : item.symbol.includes(needle) ? 3 : 0;
       const nameScore = item.name.toUpperCase().startsWith(needle) ? 2 : item.name.toUpperCase().includes(needle) ? 1 : 0;
+      const exchangeScore = preferredExchange && item.exchange === preferredExchange ? 1 : 0;
       return {
         ...item,
-        score: symbolScore + nameScore,
+        score: symbolScore + nameScore + exchangeScore,
       };
     })
     .filter((item) => item.score > 0)
@@ -289,8 +320,19 @@ export function searchStockCatalog(query = '', limit = 8) {
     .slice(0, limit);
 }
 
-export function resolveStockInput(input = '') {
-  const raw = String(input || '').trim();
+function buildResolvedFallback(symbol = '', preferredExchange = '') {
+  const fallback = fallbackEntry(symbol);
+  return {
+    symbol: symbol.toUpperCase(),
+    ...fallback,
+    exchange: normalizeExchange(preferredExchange || fallback.exchange || 'NSE') || 'NSE',
+  };
+}
+
+export function resolveStockInput(input = '', options = {}) {
+  const { query, preferredExchange: parsedExchange } = parseExchangeQualifiedInput(input);
+  const preferredExchange = normalizeExchange(options.preferredExchange || parsedExchange);
+  const raw = String(query || '').trim();
   if (!raw) return null;
 
   const directProfile = STOCK_CATALOG[raw.toUpperCase()];
@@ -298,33 +340,34 @@ export function resolveStockInput(input = '') {
     return {
       symbol: raw.toUpperCase(),
       ...directProfile,
+      exchange: preferredExchange || directProfile.exchange,
     };
   }
 
   const normalizedNeedle = normalizeSearchText(raw);
-  const exactNameMatch = getCatalogSnapshot().find((item) => normalizeSearchText(item.name) === normalizedNeedle);
+  const exactNameMatch = getCatalogSnapshot().find((item) => (
+    normalizeSearchText(item.name) === normalizedNeedle
+    && (!preferredExchange || item.exchange === preferredExchange)
+  ));
   if (exactNameMatch) return exactNameMatch;
 
-  if (looksLikeTradingSymbol(raw)) {
-    return {
-      symbol: raw.toUpperCase(),
-      ...fallbackEntry(raw),
-    };
-  }
+  const localSuggestion = searchStockCatalog(raw, 1, { preferredExchange })[0] || null;
+  if (localSuggestion) return localSuggestion;
 
-  return searchStockCatalog(raw, 1)[0] || null;
+  return null;
 }
 
-function mapSearchItemToProfile(item = {}) {
+function mapSearchItemToProfile(item = {}, preferredExchange = '') {
   const symbol = String(item.symbol || '').trim().toUpperCase();
   if (!symbol) return null;
 
   const profile = getStockProfile(symbol);
+  const exchange = normalizeExchange(item.exchange || preferredExchange || profile.exchange || 'NSE') || 'NSE';
   return {
     symbol,
     name: String(item.name || profile.name || symbol).trim(),
     sector: profile.sector,
-    exchange: String(item.exchange || profile.exchange || 'NSE').trim().toUpperCase(),
+    exchange,
     current_price: profile.current_price,
     beta: profile.beta,
     pe_ratio: profile.pe_ratio,
@@ -334,11 +377,13 @@ function mapSearchItemToProfile(item = {}) {
   };
 }
 
-async function fetchMarketSearch(query = '', limit = 8) {
-  const trimmed = String(query || '').trim();
+async function fetchMarketSearch(query = '', limit = 8, options = {}) {
+  const { query: parsedQuery, preferredExchange: parsedExchange } = parseExchangeQualifiedInput(query);
+  const preferredExchange = normalizeExchange(options.preferredExchange || parsedExchange);
+  const trimmed = String(parsedQuery || '').trim();
   if (!trimmed) return [];
 
-  const cacheKey = `${trimmed.toUpperCase()}::${limit}`;
+  const cacheKey = `${preferredExchange || 'ALL'}::${trimmed.toUpperCase()}::${limit}`;
   if (MARKET_SEARCH_CACHE.has(cacheKey)) {
     return MARKET_SEARCH_CACHE.get(cacheKey);
   }
@@ -348,8 +393,14 @@ async function fetchMarketSearch(query = '', limit = 8) {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 2500);
+    const searchUrl = new URL(`${apiBaseUrl}/api/market/search`);
+    searchUrl.searchParams.set('q', trimmed);
+    searchUrl.searchParams.set('limit', String(limit));
+    if (preferredExchange) {
+      searchUrl.searchParams.set('exchange', preferredExchange);
+    }
     const response = await fetch(
-      `${apiBaseUrl}/api/market/search?q=${encodeURIComponent(trimmed)}&limit=${encodeURIComponent(limit)}`,
+      searchUrl.toString(),
       { signal: controller.signal },
     );
     clearTimeout(timeout);
@@ -361,7 +412,7 @@ async function fetchMarketSearch(query = '', limit = 8) {
 
     const payload = await response.json();
     const items = (payload?.items || [])
-      .map(mapSearchItemToProfile)
+      .map((item) => mapSearchItemToProfile(item, preferredExchange))
       .filter(Boolean);
     MARKET_SEARCH_CACHE.set(cacheKey, items);
     return items;
@@ -371,35 +422,40 @@ async function fetchMarketSearch(query = '', limit = 8) {
   }
 }
 
-function scoreResolvedCandidate(input = '', candidate = {}) {
-  const needle = normalizeSearchText(input);
+function scoreResolvedCandidate(input = '', candidate = {}, preferredExchange = '') {
+  const { query } = parseExchangeQualifiedInput(input);
+  const needle = normalizeSearchText(query);
   const symbol = normalizeSearchText(candidate.symbol);
   const name = normalizeSearchText(candidate.name);
+  const exchangeBoost = preferredExchange && normalizeExchange(candidate.exchange) === preferredExchange ? 10 : 0;
 
-  if (symbol === needle) return 100;
-  if (name === needle) return 95;
-  if (symbol.startsWith(needle)) return 90;
-  if (name.startsWith(needle)) return 85;
-  if (symbol.includes(needle)) return 75;
-  if (name.includes(needle)) return 70;
+  if (symbol === needle) return 100 + exchangeBoost;
+  if (name === needle) return 95 + exchangeBoost;
+  if (symbol.startsWith(needle)) return 90 + exchangeBoost;
+  if (name.startsWith(needle)) return 85 + exchangeBoost;
+  if (symbol.includes(needle)) return 75 + exchangeBoost;
+  if (name.includes(needle)) return 70 + exchangeBoost;
   return 0;
 }
 
-export async function searchStockSuggestionsAsync(query = '', limit = 8) {
-  const local = searchStockCatalog(query, limit);
-  const remote = await fetchMarketSearch(query, limit);
+export async function searchStockSuggestionsAsync(query = '', limit = 8, options = {}) {
+  const { preferredExchange: parsedExchange } = parseExchangeQualifiedInput(query);
+  const preferredExchange = normalizeExchange(options.preferredExchange || parsedExchange);
+  const local = searchStockCatalog(query, limit, { preferredExchange });
+  const remote = await fetchMarketSearch(query, limit, { preferredExchange });
   const merged = new Map();
 
   [...local, ...remote].forEach((item) => {
     if (!item?.symbol) return;
-    const existing = merged.get(item.symbol);
+    const key = `${normalizeExchange(item.exchange || preferredExchange || 'NSE')}:${item.symbol}`;
+    const existing = merged.get(key);
     const scored = {
       ...item,
-      score: scoreResolvedCandidate(query, item),
+      score: scoreResolvedCandidate(query, item, preferredExchange),
     };
 
     if (!existing || scored.score > existing.score) {
-      merged.set(item.symbol, scored);
+      merged.set(key, scored);
     }
   });
 
@@ -408,21 +464,25 @@ export async function searchStockSuggestionsAsync(query = '', limit = 8) {
     .slice(0, limit);
 }
 
-export async function resolveStockInputAsync(input = '') {
-  const cacheKey = normalizeSearchText(input);
+export async function resolveStockInputAsync(input = '', options = {}) {
+  const { query, preferredExchange: parsedExchange } = parseExchangeQualifiedInput(input);
+  const preferredExchange = normalizeExchange(options.preferredExchange || parsedExchange);
+  const cacheKey = `${preferredExchange || 'ALL'}::${normalizeSearchText(query)}`;
   if (!cacheKey) return null;
   if (STOCK_RESOLUTION_CACHE.has(cacheKey)) {
     return STOCK_RESOLUTION_CACHE.get(cacheKey);
   }
 
-  const local = resolveStockInput(input);
+  const local = resolveStockInput(input, { preferredExchange });
   if (local) {
     STOCK_RESOLUTION_CACHE.set(cacheKey, local);
     return local;
   }
 
-  const remote = await searchStockSuggestionsAsync(input, 5);
-  const resolved = remote[0] || null;
+  const remote = await searchStockSuggestionsAsync(input, 5, { preferredExchange });
+  const resolved = remote.find((item) => !preferredExchange || normalizeExchange(item.exchange) === preferredExchange)
+    || remote[0]
+    || (looksLikeTradingSymbol(query) ? buildResolvedFallback(query, preferredExchange) : null);
   STOCK_RESOLUTION_CACHE.set(cacheKey, resolved);
   return resolved;
 }

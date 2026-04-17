@@ -12,16 +12,46 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function normalizePreferredExchange(value = '') {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (!normalized) return '';
+  if (normalized === 'BOM' || normalized === 'BO') return 'BSE';
+  if (normalized === 'NS') return 'NSE';
+  return ['NSE', 'BSE'].includes(normalized) ? normalized : '';
+}
+
+function getRowResolverInput(row = {}) {
+  const rawStock = String(row.Stock || row.Symbol || row.Name || '').trim();
+  const preferredExchange = normalizePreferredExchange(
+    row.Exchange
+      ?? row.EXCHANGE
+      ?? row.Exch
+      ?? row.EXCH
+      ?? row['Stock Exchange']
+      ?? row.Market,
+  );
+
+  return {
+    rawStock,
+    preferredExchange,
+    key: `${preferredExchange || 'AUTO'}::${rawStock}`,
+  };
+}
+
 async function resolveWatchlistInputs(rows = []) {
   const uniqueInputs = [...new Set(
     rows
-      .map((row) => String(row.Stock || row.Symbol || row.Name || '').trim())
+      .map((row) => getRowResolverInput(row))
+      .map((item) => item.key)
       .filter(Boolean),
   )];
 
   const resolvedEntries = await Promise.all(uniqueInputs.map(async (input) => {
-    const resolved = await resolveStockInputAsync(input);
-    const suggestions = resolved ? [] : await searchStockSuggestionsAsync(input, 3);
+    const [preferredExchange, ...rest] = String(input).split('::');
+    const rawInput = rest.join('::');
+    const exchange = preferredExchange === 'AUTO' ? '' : preferredExchange;
+    const resolved = await resolveStockInputAsync(rawInput, { preferredExchange: exchange });
+    const suggestions = resolved ? [] : await searchStockSuggestionsAsync(rawInput, 3, { preferredExchange: exchange });
     return [input, { resolved, suggestions }];
   }));
 
@@ -34,10 +64,10 @@ async function parseWatchlistRows(rows = []) {
   const resolvedMap = await resolveWatchlistInputs(rows);
 
   for (const [index, row] of rows.entries()) {
-    const rawStock = String(row.Stock || row.Symbol || row.Name || '').trim();
+    const { rawStock, preferredExchange, key: resolverKey } = getRowResolverInput(row);
     if (!rawStock) continue;
 
-    const resolvedEntry = resolvedMap.get(rawStock);
+    const resolvedEntry = resolvedMap.get(resolverKey);
     const resolved = resolvedEntry?.resolved || null;
     if (!resolved) {
       unresolved.push({
@@ -53,7 +83,7 @@ async function parseWatchlistRows(rows = []) {
       name: resolved.name,
       sector: resolved.sector,
       current_price: resolved.current_price,
-      exchange: resolved.exchange,
+      exchange: resolved.exchange || preferredExchange || 'NSE',
       target_price: toNumber(row['Target Price'] ?? row.Target ?? row['Buy Below'], resolved.current_price),
       notes: String(row.Notes || row.Note || '').trim() || undefined,
     });
@@ -61,7 +91,7 @@ async function parseWatchlistRows(rows = []) {
 
   const deduped = new Map();
   entries.forEach((item) => {
-    deduped.set(item.symbol, item);
+    deduped.set(`${String(item.exchange || 'NSE').trim().toUpperCase()}:${item.symbol}`, item);
   });
 
   return {
