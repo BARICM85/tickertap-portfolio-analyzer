@@ -145,43 +145,6 @@ export default function TradingTerminal() {
   }, [selectedSymbol]);
 
   useEffect(() => {
-    const syncFloatingTicket = () => {
-      const canvas = terminalCanvasRef.current;
-      const panel = ticketPanelRef.current;
-      if (!canvas || !panel || typeof window === 'undefined') return;
-      if (window.innerWidth < 1280) return;
-
-      const canvasWidth = canvas.clientWidth;
-      const panelWidth = panel.offsetWidth || 336;
-      const panelHeight = panel.offsetHeight || 0;
-      const maxX = Math.max(16, canvasWidth - panelWidth - 16);
-      const maxY = Math.max(24, canvas.scrollHeight - panelHeight - 16);
-
-      setTicketPosition((current) => {
-        if (!ticketInitialized) {
-          return { x: maxX, y: 24 };
-        }
-
-        return {
-          x: clamp(current.x, 16, maxX),
-          y: clamp(current.y, 24, maxY),
-        };
-      });
-
-      if (!ticketInitialized) {
-        setTicketInitialized(true);
-      }
-    };
-
-    syncFloatingTicket();
-    if (typeof window !== 'undefined') {
-      window.addEventListener('resize', syncFloatingTicket);
-      return () => window.removeEventListener('resize', syncFloatingTicket);
-    }
-    return undefined;
-  }, [ticketInitialized, optionOverview?.rows?.length, futuresBoard?.rows?.length, positions.length]);
-
-  useEffect(() => {
     const handlePointerMove = (event) => {
       const dragState = dragStateRef.current;
       const canvas = terminalCanvasRef.current;
@@ -338,6 +301,43 @@ export default function TradingTerminal() {
     const elapsedMs = Date.now() - new Date(automationSettings.lastTriggeredAt).getTime();
     return elapsedMs < Number(automationSettings.triggerCooldownMinutes || 15) * 60 * 1000;
   }, [automationSettings.lastTriggeredAt, automationSettings.triggerCooldownMinutes]);
+
+  useEffect(() => {
+    const syncFloatingTicket = () => {
+      const canvas = terminalCanvasRef.current;
+      const panel = ticketPanelRef.current;
+      if (!canvas || !panel || typeof window === 'undefined') return;
+      if (window.innerWidth < 1280) return;
+
+      const canvasWidth = canvas.clientWidth;
+      const panelWidth = panel.offsetWidth || 336;
+      const panelHeight = panel.offsetHeight || 0;
+      const maxX = Math.max(16, canvasWidth - panelWidth - 16);
+      const maxY = Math.max(24, canvas.scrollHeight - panelHeight - 16);
+
+      setTicketPosition((current) => {
+        if (!ticketInitialized) {
+          return { x: maxX, y: 24 };
+        }
+
+        return {
+          x: clamp(current.x, 16, maxX),
+          y: clamp(current.y, 24, maxY),
+        };
+      });
+
+      if (!ticketInitialized) {
+        setTicketInitialized(true);
+      }
+    };
+
+    syncFloatingTicket();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', syncFloatingTicket);
+      return () => window.removeEventListener('resize', syncFloatingTicket);
+    }
+    return undefined;
+  }, [ticketInitialized, optionOverview?.rows?.length, futuresBoard?.rows?.length, positions.length]);
 
   const primeTicketFromContract = (contract, side = ticket.side) => {
     const lots = Number(contract.lotSize || ticket.quantity || 1);
