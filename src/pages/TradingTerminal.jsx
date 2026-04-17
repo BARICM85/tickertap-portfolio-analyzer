@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowUpRight,
@@ -101,10 +101,6 @@ function formatDateTime(value) {
   });
 }
 
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
-
 export default function TradingTerminal() {
   const [trackedSymbols, setTrackedSymbols] = useState(() => readTrackedSymbols());
   const [selectedSymbol, setSelectedSymbol] = useState(() => readTrackedSymbols()[0] || 'NIFTY');
@@ -117,13 +113,6 @@ export default function TradingTerminal() {
   const [refreshPulse, setRefreshPulse] = useState(0);
   const [confirmLiveOpen, setConfirmLiveOpen] = useState(false);
   const [placingLive, setPlacingLive] = useState(false);
-  const [ticketPosition, setTicketPosition] = useState({ x: 0, y: 24 });
-  const [ticketInitialized, setTicketInitialized] = useState(false);
-  const [ticketDragging, setTicketDragging] = useState(false);
-  const terminalCanvasRef = useRef(null);
-  const ticketPanelRef = useRef(null);
-  const dragStateRef = useRef(null);
-
   useEffect(() => {
     writeTrackedSymbols(trackedSymbols);
   }, [trackedSymbols]);
@@ -143,37 +132,6 @@ export default function TradingTerminal() {
   useEffect(() => {
     setTicket((current) => ({ ...current, symbol: selectedSymbol }));
   }, [selectedSymbol]);
-
-  useEffect(() => {
-    const handlePointerMove = (event) => {
-      const dragState = dragStateRef.current;
-      const canvas = terminalCanvasRef.current;
-      const panel = ticketPanelRef.current;
-      if (!dragState || !canvas || !panel) return;
-
-      const nextX = event.clientX - dragState.offsetX;
-      const nextY = event.clientY - dragState.offsetY;
-      const maxX = Math.max(16, canvas.clientWidth - panel.offsetWidth - 16);
-      const maxY = Math.max(24, canvas.scrollHeight - panel.offsetHeight - 16);
-
-      setTicketPosition({
-        x: clamp(nextX, 16, maxX),
-        y: clamp(nextY, 24, maxY),
-      });
-    };
-
-    const handlePointerUp = () => {
-      dragStateRef.current = null;
-      setTicketDragging(false);
-    };
-
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp);
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
-    };
-  }, []);
 
   const { data: zerodhaStatus, isFetching: statusFetching } = useQuery({
     queryKey: ['terminal-zerodha-status', refreshPulse],
@@ -302,43 +260,6 @@ export default function TradingTerminal() {
     return elapsedMs < Number(automationSettings.triggerCooldownMinutes || 15) * 60 * 1000;
   }, [automationSettings.lastTriggeredAt, automationSettings.triggerCooldownMinutes]);
 
-  useEffect(() => {
-    const syncFloatingTicket = () => {
-      const canvas = terminalCanvasRef.current;
-      const panel = ticketPanelRef.current;
-      if (!canvas || !panel || typeof window === 'undefined') return;
-      if (window.innerWidth < 1280) return;
-
-      const canvasWidth = canvas.clientWidth;
-      const panelWidth = panel.offsetWidth || 336;
-      const panelHeight = panel.offsetHeight || 0;
-      const maxX = Math.max(16, canvasWidth - panelWidth - 16);
-      const maxY = Math.max(24, canvas.scrollHeight - panelHeight - 16);
-
-      setTicketPosition((current) => {
-        if (!ticketInitialized) {
-          return { x: maxX, y: 24 };
-        }
-
-        return {
-          x: clamp(current.x, 16, maxX),
-          y: clamp(current.y, 24, maxY),
-        };
-      });
-
-      if (!ticketInitialized) {
-        setTicketInitialized(true);
-      }
-    };
-
-    syncFloatingTicket();
-    if (typeof window !== 'undefined') {
-      window.addEventListener('resize', syncFloatingTicket);
-      return () => window.removeEventListener('resize', syncFloatingTicket);
-    }
-    return undefined;
-  }, [ticketInitialized, optionOverview?.rows?.length, futuresBoard?.rows?.length, positions.length]);
-
   const primeTicketFromContract = (contract, side = ticket.side) => {
     const lots = Number(contract.lotSize || ticket.quantity || 1);
     const nextTicket = {
@@ -359,19 +280,6 @@ export default function TradingTerminal() {
   const handleDeleteBlotterEntry = (entryId) => {
     setBlotter((current) => current.filter((row) => row.id !== entryId));
     toast.success('Blotter entry deleted.');
-  };
-
-  const handleStartTicketDrag = (event) => {
-    if (typeof window === 'undefined' || window.innerWidth < 1280) return;
-    const panel = ticketPanelRef.current;
-    if (!panel) return;
-
-    const panelRect = panel.getBoundingClientRect();
-    dragStateRef.current = {
-      offsetX: event.clientX - panelRect.left,
-      offsetY: event.clientY - panelRect.top,
-    };
-    setTicketDragging(true);
   };
 
   const handleTrackSymbol = (item) => {
@@ -560,20 +468,10 @@ export default function TradingTerminal() {
     triggerReady,
   ]);
 
-  const renderOrderTicket = (floating = false) => (
+  const renderOrderTicket = () => (
     <Section
       title="Order ticket"
       subtitle="Paper-first ticket modeled for F&O desk usage."
-      className={floating ? 'h-full' : ''}
-      action={floating ? (
-        <button
-          type="button"
-          onPointerDown={handleStartTicketDrag}
-          className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em] ${ticketDragging ? 'border-cyan-300/40 bg-cyan-300/12 text-cyan-100' : 'border-white/10 bg-white/[0.04] text-slate-300'}`}
-        >
-          Drag ticket
-        </button>
-      ) : null}
     >
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-1">
         <label className="space-y-2">
@@ -779,22 +677,22 @@ export default function TradingTerminal() {
         <Stat label="Execution" value={executionGuard.liveMode ? 'Live mode selected' : 'Paper mode'} note="Chain Buy / Sell follows this mode" tone={executionGuard.liveMode ? 'amber' : 'slate'} />
       </div>
 
-      <div ref={terminalCanvasRef} className="grid gap-6 xl:grid-cols-[0.86fr_2.14fr]">
-        <Section
-          title="Market board"
-          subtitle="Track the underlyings you trade most often."
-          action={(
-            <div className="w-full max-w-sm">
-              <StockAutocompleteInput
-                value={searchValue}
-                onChange={setSearchValue}
-                onSelect={handleTrackSymbol}
-                placeholder="Add symbol to board"
-              />
-            </div>
-          )}
-        >
-          <div className="space-y-3">
+      <Section
+        title="Market board"
+        subtitle="Track the underlyings you trade most often."
+        action={(
+          <div className="w-full max-w-sm">
+            <StockAutocompleteInput
+              value={searchValue}
+              onChange={setSearchValue}
+              onSelect={handleTrackSymbol}
+              placeholder="Add symbol to board"
+            />
+          </div>
+        )}
+      >
+        <div className="-mx-1 overflow-x-auto pb-1">
+          <div className="flex min-w-max gap-3 px-1">
             {boardQuotes.map((row) => {
               const positive = Number(row.changePercent || 0) >= 0;
               return (
@@ -802,7 +700,7 @@ export default function TradingTerminal() {
                   key={row.symbol}
                   type="button"
                   onClick={() => setSelectedSymbol(row.symbol)}
-                  className={`w-full rounded-[22px] border px-4 py-3 text-left transition ${selectedSymbol === row.symbol ? 'border-cyan-300/35 bg-cyan-300/10' : 'border-white/8 bg-white/[0.03] hover:bg-white/[0.05]'}`}
+                  className={`w-[220px] shrink-0 rounded-[22px] border px-4 py-3 text-left transition ${selectedSymbol === row.symbol ? 'border-cyan-300/35 bg-cyan-300/10' : 'border-white/8 bg-white/[0.03] hover:bg-white/[0.05]'}`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -824,9 +722,11 @@ export default function TradingTerminal() {
               );
             })}
           </div>
-        </Section>
+        </div>
+      </Section>
 
-        <div className="space-y-6 xl:relative xl:pr-[22rem]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20.5rem] xl:items-start">
+        <div className="space-y-6">
           <Section
             title={`${selectedSymbol} execution matrix`}
             subtitle={terminalBias.note}
@@ -918,19 +818,7 @@ export default function TradingTerminal() {
           </Section>
 
           <OptionChainPanel stock={stock} onContractAction={handleOptionChainAction} />
-          <div className="xl:hidden">
-            {renderOrderTicket(false)}
-          </div>
-          <div
-            ref={ticketPanelRef}
-            className="hidden xl:block xl:absolute xl:z-30"
-            style={{ left: `${ticketPosition.x}px`, top: `${ticketPosition.y}px`, width: '20.5rem' }}
-          >
-            {renderOrderTicket(true)}
-          </div>
-        </div>
 
-        <div className="space-y-6">
           <Section title="Risk and funding" subtitle="Available cash, premium usage, exposure, and operator alerts.">
             <div className="space-y-3">
               <Stat label="Available" value={formatCurrency(margins.availableForTrade || 0)} note="Tradable cash after debits and premium" tone="emerald" />
@@ -944,6 +832,10 @@ export default function TradingTerminal() {
               </div>
             ) : null}
           </Section>
+        </div>
+
+        <div className="space-y-6">
+          {renderOrderTicket()}
         </div>
       </div>
 
