@@ -45,7 +45,20 @@ function useRrgHistories({ benchmarkSymbol, symbols, range }) {
   });
 }
 
+function formatRrgTooltipDate(dateLike) {
+  try {
+    return new Date(dateLike).toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+  } catch {
+    return String(dateLike || '');
+  }
+}
+
 function RrgCanvas({ snapshot }) {
+  const [hoveredPoint, setHoveredPoint] = useState(null);
   const viewBox = { width: 860, height: 560 };
   const center = 100;
   const span = 9;
@@ -59,6 +72,7 @@ function RrgCanvas({ snapshot }) {
 
   const scaleX = (value) => pad.left + ((value - xMin) / (xMax - xMin)) * plotWidth;
   const scaleY = (value) => pad.top + plotHeight - ((value - yMin) / (yMax - yMin)) * plotHeight;
+  const clamp = (value, min, max) => Math.max(min, Math.min(value, max));
 
   const ticks = Array.from({ length: 19 }, (_, index) => center - 9 + index);
 
@@ -99,14 +113,32 @@ function RrgCanvas({ snapshot }) {
             <g key={item.symbol}>
               <path d={path} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" opacity="0.7" />
               {item.tail.map((point, index) => (
-                <circle
-                  key={`${item.symbol}-${point.date}-${index}`}
-                  cx={scaleX(toRrg100(point.rsRatio))}
-                  cy={scaleY(toRrg100(point.rsMomentum))}
-                  r={index === item.tail.length - 1 ? 5.5 : 3}
-                  fill={color}
-                  opacity={index === item.tail.length - 1 ? 1 : 0.4}
-                />
+                <g key={`${item.symbol}-${point.date}-${index}`}>
+                  <circle
+                    cx={scaleX(toRrg100(point.rsRatio))}
+                    cy={scaleY(toRrg100(point.rsMomentum))}
+                    r={10}
+                    fill="transparent"
+                    className="cursor-pointer"
+                    onMouseEnter={() => setHoveredPoint({
+                      label: item.label,
+                      date: point.date,
+                      rsRatio: toRrg100(point.rsRatio),
+                      rsMomentum: toRrg100(point.rsMomentum),
+                      x: scaleX(toRrg100(point.rsRatio)),
+                      y: scaleY(toRrg100(point.rsMomentum)),
+                      color,
+                    })}
+                    onMouseLeave={() => setHoveredPoint((current) => (current?.label === item.label && current?.date === point.date ? null : current))}
+                  />
+                  <circle
+                    cx={scaleX(toRrg100(point.rsRatio))}
+                    cy={scaleY(toRrg100(point.rsMomentum))}
+                    r={index === item.tail.length - 1 ? 5.5 : 3}
+                    fill={color}
+                    opacity={index === item.tail.length - 1 ? 1 : 0.4}
+                  />
+                </g>
               ))}
               <text
                 x={scaleX(toRrg100(latest.rsRatio)) + 8}
@@ -120,6 +152,47 @@ function RrgCanvas({ snapshot }) {
             </g>
           );
         })}
+
+        {hoveredPoint ? (() => {
+          const boxWidth = 176;
+          const boxHeight = 72;
+          const preferredX = hoveredPoint.x - 22;
+          const preferredY = hoveredPoint.y - boxHeight - 12;
+          const tooltipX = clamp(preferredX, pad.left + 8, viewBox.width - boxWidth - 12);
+          const tooltipY = preferredY < pad.top + 6 ? hoveredPoint.y + 12 : preferredY;
+
+          return (
+            <g pointerEvents="none">
+              <rect
+                x={tooltipX + 3}
+                y={tooltipY + 4}
+                width={boxWidth}
+                height={boxHeight}
+                rx="8"
+                fill="rgba(37,99,235,0.18)"
+              />
+              <rect
+                x={tooltipX}
+                y={tooltipY}
+                width={boxWidth}
+                height={boxHeight}
+                rx="8"
+                fill="#ffffff"
+                stroke="#2563eb"
+                strokeWidth="1.2"
+              />
+              <text x={tooltipX + 12} y={tooltipY + 20} fill="#0f172a" fontSize="12" fontWeight="700">
+                {formatRrgTooltipDate(hoveredPoint.date)}
+              </text>
+              <text x={tooltipX + 12} y={tooltipY + 42} fill="#0f172a" fontSize="12">
+                JdK RS-Ratio: {hoveredPoint.rsRatio.toFixed(2)}
+              </text>
+              <text x={tooltipX + 12} y={tooltipY + 60} fill="#0f172a" fontSize="12">
+                JdK RS-Momentum: {hoveredPoint.rsMomentum.toFixed(2)}
+              </text>
+            </g>
+          );
+        })() : null}
 
         {ticks.map((tick) => (
           <g key={`axis-${tick}`}>
