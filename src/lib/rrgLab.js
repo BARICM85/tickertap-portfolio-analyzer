@@ -50,7 +50,8 @@ export const RRG_DEFAULT_WATCHLISTS = {
 };
 
 export function formatRrgSymbol(symbol, mode = 'Index') {
-  return RRG_UNIVERSES[mode]?.[symbol] || symbol.replace('^', '').replace('.NS', '').replace('.BO', '');
+  const benchmarkLabel = Object.values(RRG_BENCHMARKS).find((item) => item.symbol === symbol)?.label;
+  return benchmarkLabel || RRG_UNIVERSES[mode]?.[symbol] || symbol.replace('^', '').replace('.NS', '').replace('.BO', '');
 }
 
 function rollingMean(values, endIndex, window) {
@@ -202,4 +203,35 @@ export function quadrantTone(quadrant) {
     Lagging: '#ef4444',
     Improving: '#60a5fa',
   }[quadrant] || '#cbd5e1';
+}
+
+export function buildDemoRrgSnapshot(symbols = [], { labels = {}, tailLength = 10 } = {}) {
+  const quadrants = ['Leading', 'Weakening', 'Lagging', 'Improving'];
+  return symbols.map((symbol, index) => {
+    const baseRatio = [-0.9, 1.1, -1.2, 0.7][index % 4];
+    const baseMomentum = [0.8, -0.7, -1.05, 1.15][index % 4];
+    const direction = index % 2 === 0 ? 1 : -1;
+    const tail = Array.from({ length: tailLength }, (_, step) => {
+      const progress = step / Math.max(tailLength - 1, 1);
+      const wave = Math.sin((index + 1) * 0.7 + progress * Math.PI) * 0.18;
+      const drift = (progress - 0.5) * 0.6 * direction;
+      return {
+        date: new Date(Date.now() - (tailLength - step) * 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        rsRatio: baseRatio + drift + wave,
+        rsMomentum: baseMomentum + drift * 0.7 - wave * 0.85,
+      };
+    });
+
+    const latest = tail[tail.length - 1];
+    return {
+      symbol,
+      label: labels[symbol] || symbol,
+      quadrant: quadrants[index % quadrants.length],
+      rsRatio: latest.rsRatio,
+      rsMomentum: latest.rsMomentum,
+      score: latest.rsRatio + latest.rsMomentum,
+      tail,
+      demo: true,
+    };
+  });
 }

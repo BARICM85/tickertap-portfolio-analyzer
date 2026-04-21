@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { getLiveMarketHistory, getZerodhaHoldings } from '@/lib/brokerClient';
 import {
+  buildDemoRrgSnapshot,
   buildRrgSnapshot,
   formatRrgSymbol,
   quadrantTone,
@@ -62,9 +63,9 @@ function RrgCanvas({ snapshot }) {
   const ticks = Array.from({ length: 19 }, (_, index) => center - 9 + index);
 
   return (
-    <div className="overflow-hidden rounded-[28px] border border-white/10 bg-[#09121d] p-3">
+    <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white p-3 shadow-[0_18px_44px_rgba(15,23,42,0.08)]">
       <svg viewBox={`0 0 ${viewBox.width} ${viewBox.height}`} className="h-auto w-full">
-        <rect x={0} y={0} width={viewBox.width} height={viewBox.height} fill="#09121d" rx="26" />
+        <rect x={0} y={0} width={viewBox.width} height={viewBox.height} fill="#ffffff" rx="26" />
         <rect x={pad.left} y={pad.top} width={plotWidth / 2} height={plotHeight / 2} fill="#dbe4ff" opacity="0.95" />
         <rect x={pad.left + plotWidth / 2} y={pad.top} width={plotWidth / 2} height={plotHeight / 2} fill="#dff4e2" opacity="0.95" />
         <rect x={pad.left} y={pad.top + plotHeight / 2} width={plotWidth / 2} height={plotHeight / 2} fill="#ffe0df" opacity="0.95" />
@@ -84,7 +85,9 @@ function RrgCanvas({ snapshot }) {
         <text x={pad.left + plotWidth - 88} y={pad.top + 22} fill="#16a34a" fontSize="18" fontWeight="700">Leading</text>
         <text x={pad.left + 10} y={pad.top + plotHeight - 10} fill="#dc2626" fontSize="18" fontWeight="700">Lagging</text>
         <text x={pad.left + plotWidth - 112} y={pad.top + plotHeight - 10} fill="#d97706" fontSize="18" fontWeight="700">Weakening</text>
-        <text x={viewBox.width / 2} y={pad.top + 22} textAnchor="middle" fill="#94a3b8" fontSize="16" fontWeight="600">Thanks to Sharpely for the inspiration</text>
+        <text x={viewBox.width / 2} y={pad.top + 22} textAnchor="middle" fill="#94a3b8" fontSize="16" fontWeight="600">
+          Thanks to Sharpely for the inspiration
+        </text>
 
         {snapshot.map((item) => {
           const color = quadrantTone(item.quadrant);
@@ -120,17 +123,17 @@ function RrgCanvas({ snapshot }) {
 
         {ticks.map((tick) => (
           <g key={`axis-${tick}`}>
-            <text x={scaleX(tick)} y={pad.top + plotHeight + 22} textAnchor="middle" fill="#cbd5e1" fontSize="10">{tick}</text>
-            <text x={pad.left - 12} y={scaleY(tick) + 4} textAnchor="end" fill="#cbd5e1" fontSize="10">{tick}</text>
+            <text x={scaleX(tick)} y={pad.top + plotHeight + 22} textAnchor="middle" fill="#64748b" fontSize="10">{tick}</text>
+            <text x={pad.left - 12} y={scaleY(tick) + 4} textAnchor="end" fill="#64748b" fontSize="10">{tick}</text>
           </g>
         ))}
 
-        <text x={viewBox.width / 2} y={viewBox.height - 12} textAnchor="middle" fill="#cbd5e1" fontSize="12">JdK RS-Ratio</text>
+        <text x={viewBox.width / 2} y={viewBox.height - 12} textAnchor="middle" fill="#64748b" fontSize="12">JdK RS-Ratio</text>
         <text
           x={18}
           y={viewBox.height / 2}
           textAnchor="middle"
-          fill="#cbd5e1"
+          fill="#64748b"
           fontSize="12"
           transform={`rotate(-90 18 ${viewBox.height / 2})`}
         >
@@ -140,7 +143,7 @@ function RrgCanvas({ snapshot }) {
 
       <div className="mt-4 flex flex-wrap justify-center gap-4">
         {snapshot.map((item) => (
-          <div key={`legend-${item.symbol}`} className="flex items-center gap-2 text-xs text-slate-300">
+          <div key={`legend-${item.symbol}`} className="flex items-center gap-2 text-xs text-slate-600">
             <span className="h-2.5 w-5 rounded-full" style={{ backgroundColor: quadrantTone(item.quadrant) }} />
             <span>{item.label.toUpperCase()}</span>
           </div>
@@ -163,6 +166,14 @@ export default function RrgLab() {
   const universe = RRG_UNIVERSES[mode];
   const watchlist = watchlists[mode];
   const availableSymbols = Object.keys(universe);
+  const labels = useMemo(
+    () => ({
+      ...Object.fromEntries(availableSymbols.map((symbol) => [symbol, formatRrgSymbol(symbol, mode)])),
+      [benchmark.symbol]: benchmark.label,
+    }),
+    [availableSymbols, benchmark, mode],
+  );
+
   const filteredSymbols = availableSymbols.filter((symbol) => {
     if (watchlist.includes(symbol)) return false;
     const label = formatRrgSymbol(symbol, mode);
@@ -181,10 +192,21 @@ export default function RrgLab() {
         tailLength,
         timeframe,
         includePartial,
-        labels: Object.fromEntries(availableSymbols.map((symbol) => [symbol, formatRrgSymbol(symbol, mode)])),
+        labels,
       }),
-    [data?.historyMap, benchmark.symbol, tailLength, timeframe, includePartial, availableSymbols, mode],
+    [data?.historyMap, benchmark.symbol, tailLength, timeframe, includePartial, labels],
   );
+
+  const fallbackSnapshot = useMemo(() => {
+    if (snapshot.length || isLoading) return [];
+    return buildDemoRrgSnapshot(watchlist.slice(0, 6), {
+      tailLength,
+      labels,
+    });
+  }, [snapshot, isLoading, watchlist, tailLength, labels]);
+
+  const renderedSnapshot = snapshot.length ? snapshot : fallbackSnapshot;
+  const isDemoMode = !snapshot.length && fallbackSnapshot.length > 0;
 
   const latestDate = useMemo(() => {
     const benchmarkPoints = data?.historyMap?.[benchmark.symbol]?.points || [];
@@ -196,7 +218,7 @@ export default function RrgLab() {
     if (!symbol) return;
     setWatchlists((current) => ({
       ...current,
-      [mode]: [...current[mode], symbol],
+      [mode]: [...new Set([...current[mode], symbol])],
     }));
     setSearch('');
   };
@@ -233,31 +255,31 @@ export default function RrgLab() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[32px] border border-white/10 bg-[#0b1624]/90 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.24)]">
+      <section className="app-panel rounded-[32px] p-6">
         <div className="mb-3 flex items-center justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-amber-200/70">Rotation Lab</p>
-            <h1 className="mt-2 text-3xl font-semibold text-white">Relative Rotation Graph</h1>
+            <p className="text-xs uppercase tracking-[0.24em] text-orange-500/80">Rotation Lab</p>
+            <h1 className="mt-2 text-3xl font-semibold text-slate-900">Relative Rotation Graph</h1>
           </div>
-          <div className="text-xs text-slate-400">
+          <div className="text-xs leading-6 text-slate-500">
             Zerodha can help here for tradable stocks, ETFs, quotes, holdings, and daily historical candles.
             <br />
-            Sector indices may still fall back to Yahoo-style symbols where Zerodha doesn’t expose the same index history cleanly.
+            Sector indices may still fall back to mixed provider symbols where Zerodha doesn&apos;t expose the same index history cleanly.
           </div>
         </div>
 
         <div className="grid gap-6 xl:grid-cols-[1.7fr_0.65fr]">
-          <div className="rounded-[28px] border border-white/8 bg-[#07111c] p-5">
+          <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_44px_rgba(15,23,42,0.06)]">
             <div className="mb-5 flex flex-wrap items-end gap-4">
               <label className="min-w-[180px]">
-                <span className="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-400">Benchmark</span>
+                <span className="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">Benchmark</span>
                 <select
                   value={benchmarkKey}
                   onChange={(event) => setBenchmarkKey(event.target.value)}
-                  className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none"
                 >
                   {Object.entries(RRG_BENCHMARKS).map(([key, item]) => (
-                    <option key={key} value={key} className="bg-slate-900">
+                    <option key={key} value={key}>
                       {item.label}
                     </option>
                   ))}
@@ -265,7 +287,7 @@ export default function RrgLab() {
               </label>
 
               <div className="min-w-[240px] flex-1">
-              <div className="mb-2 flex items-center justify-between text-xs uppercase tracking-[0.16em] text-slate-400">
+                <div className="mb-2 flex items-center justify-between text-xs uppercase tracking-[0.16em] text-slate-500">
                   <span>Tail length</span>
                   <span>{tailLength} weeks</span>
                 </div>
@@ -276,51 +298,51 @@ export default function RrgLab() {
                   step="1"
                   value={tailLength}
                   onChange={(event) => setTailLength(Number(event.target.value))}
-                  className="h-2 w-full cursor-pointer appearance-none rounded-full bg-white/10 accent-amber-300"
+                  className="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-orange-500"
                 />
               </div>
 
               <label className="min-w-[180px]">
-                <span className="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-400">Candle timeframe</span>
+                <span className="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">Candle timeframe</span>
                 <select
                   value={timeframe}
                   onChange={(event) => setTimeframe(event.target.value)}
-                  className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none"
                 >
-                  <option value="weekly" className="bg-slate-900">Weekly candle</option>
-                  <option value="daily" className="bg-slate-900">Daily candle</option>
+                  <option value="weekly">Weekly candle</option>
+                  <option value="daily">Daily candle</option>
                 </select>
               </label>
 
-              <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-200">
+              <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
                 <input
                   type="checkbox"
                   checked={includePartial}
                   onChange={(event) => setIncludePartial(event.target.checked)}
-                  className="h-4 w-4 rounded border-white/20 bg-transparent"
+                  className="h-4 w-4 rounded border-slate-300 bg-transparent"
                 />
                 Include partial candles
               </label>
             </div>
 
-            <p className="mb-3 text-sm text-slate-300">
+            <p className="mb-3 text-sm text-slate-600">
               Showing data for {tailLength + 1} {timeframe === 'weekly' ? 'weeks' : 'sessions'}
               {latestDate ? ` ending ${new Date(latestDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
             </p>
 
             <div className="mb-4 flex items-center justify-between gap-4">
-              <div className="h-3 flex-1 overflow-hidden rounded-full bg-white/5">
+              <div className="h-3 flex-1 overflow-hidden rounded-full bg-slate-100">
                 <div className="h-full rounded-full bg-blue-500" style={{ width: `${Math.min(((tailLength + 1) / 52) * 100, 100)}%` }} />
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="outline" className="rounded-2xl border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]">
+                <Button variant="outline" className="rounded-2xl border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
                   <Waves className="mr-2 h-4 w-4" />
                   Animate
                 </Button>
-                <Button onClick={exportSvg} variant="outline" className="rounded-2xl border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]">
+                <Button onClick={exportSvg} variant="outline" className="rounded-2xl border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
                   <Download className="h-4 w-4" />
                 </Button>
-                <Button onClick={() => refetch()} disabled={isFetching} variant="outline" className="rounded-2xl border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]">
+                <Button onClick={() => refetch()} disabled={isFetching} variant="outline" className="rounded-2xl border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
                   <RefreshCw className={`mr-2 h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
                   Refresh
                 </Button>
@@ -330,34 +352,41 @@ export default function RrgLab() {
             <p className="mb-3 text-xs text-slate-500">Note: drag/zoom is not in this first linked pass yet, but the data and structure are now inside TickerTap.</p>
 
             {isLoading ? (
-              <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-10 text-center text-slate-300">Loading RRG history...</div>
-            ) : snapshot.length ? (
-              <RrgCanvas snapshot={snapshot} />
+              <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-10 text-center text-slate-500">Loading RRG history...</div>
+            ) : renderedSnapshot.length ? (
+              <>
+                {isDemoMode ? (
+                  <div className="mb-4 rounded-[20px] border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+                    Live backend history was too thin for a proper snapshot, so a demo rotation view is shown to keep the screen usable while we wait for stronger overlapping candles.
+                  </div>
+                ) : null}
+                <RrgCanvas snapshot={renderedSnapshot} />
+              </>
             ) : (
-              <div className="rounded-[24px] border border-amber-400/20 bg-amber-300/10 p-6 text-sm text-amber-100">
+              <div className="rounded-[24px] border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900">
                 No RRG snapshot could be created from the current backend history set.
-                <div className="mt-2 text-amber-100/80">
+                <div className="mt-2 text-amber-800">
                   Most likely reasons: backend sleep, provider gaps, or too few overlapping candles for the selected watchlist.
                 </div>
               </div>
             )}
 
             {data?.failures?.length ? (
-              <div className="mt-4 rounded-[20px] border border-rose-400/20 bg-rose-400/10 p-4 text-sm text-rose-100">
-                Missing history for: {data.failures.map((symbol) => formatRrgSymbol(symbol, mode)).join(', ')}
+              <div className="mt-4 rounded-[20px] border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+                Missing history for: {data.failures.map((symbol) => labels[symbol] || formatRrgSymbol(symbol, mode)).join(', ')}
               </div>
             ) : null}
           </div>
 
           <div className="space-y-4">
-            <div className="rounded-[28px] border border-white/8 bg-[#07111c] p-5">
-              <div className="mb-4 flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] p-1">
+            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_44px_rgba(15,23,42,0.06)]">
+              <div className="mb-4 flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 p-1">
                 {['Index', 'Stock', 'ETF'].map((item) => (
                   <button
                     key={item}
                     onClick={() => setMode(item)}
                     className={`flex-1 rounded-full px-3 py-2 text-xs font-semibold transition ${
-                      mode === item ? 'bg-white text-slate-950' : 'text-slate-300 hover:bg-white/[0.06]'
+                      mode === item ? 'bg-orange-500 text-white shadow-[0_10px_24px_rgba(249,115,22,0.18)]' : 'text-slate-500 hover:bg-white'
                     }`}
                   >
                     {item}
@@ -365,8 +394,8 @@ export default function RrgLab() {
                 ))}
               </div>
 
-              <p className="text-sm font-medium text-white">Quickly add from your watchlists</p>
-              <p className="mt-2 text-xs leading-5 text-slate-400">
+              <p className="text-sm font-medium text-slate-900">Quickly add from your watchlists</p>
+              <p className="mt-2 text-xs leading-5 text-slate-500">
                 This is now linked into TickerTap. Use static sector/index universes or import Zerodha holdings into stock mode.
               </p>
 
@@ -375,11 +404,11 @@ export default function RrgLab() {
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder={`Search and add ${mode.toLowerCase()}s`}
-                  className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400"
                 />
 
                 {mode === 'Stock' ? (
-                  <Button onClick={importHoldings} className="w-full rounded-2xl bg-amber-300 text-slate-950 hover:bg-amber-200">
+                  <Button onClick={importHoldings} className="w-full rounded-2xl bg-orange-500 text-white hover:bg-orange-400">
                     Import Zerodha holdings
                   </Button>
                 ) : null}
@@ -388,10 +417,10 @@ export default function RrgLab() {
                   <button
                     key={`add-${symbol}`}
                     onClick={() => addSymbol(symbol)}
-                    className="flex w-full items-center justify-between rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-left text-sm text-slate-200 transition hover:bg-white/[0.06]"
+                    className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm text-slate-700 transition hover:bg-white"
                   >
                     <span>{formatRrgSymbol(symbol, mode)}</span>
-                    <span className="text-xs text-slate-500">Add</span>
+                    <span className="text-xs text-slate-400">Add</span>
                   </button>
                 ))}
               </div>
@@ -400,7 +429,7 @@ export default function RrgLab() {
                 {watchlist.map((symbol, index) => (
                   <div
                     key={`${mode}-${symbol}`}
-                    className="flex items-center gap-3 rounded-2xl px-3 py-3 text-sm"
+                    className="flex items-center gap-3 rounded-2xl border border-slate-200 px-3 py-3 text-sm"
                     style={{ backgroundColor: ['#e8f5e9', '#fff8db', '#efe8ff', '#fdecec', '#e8f0ff'][index % 5] }}
                   >
                     <button onClick={() => removeSymbol(symbol)} className="text-slate-500">×</button>
@@ -410,14 +439,14 @@ export default function RrgLab() {
               </div>
             </div>
 
-            <div className="rounded-[28px] border border-white/8 bg-[#07111c] p-5 text-sm leading-7 text-slate-300">
-              <p className="font-semibold text-white">RRG in TickerTap</p>
+            <div className="rounded-[28px] border border-slate-200 bg-white p-5 text-sm leading-7 text-slate-600 shadow-[0_18px_44px_rgba(15,23,42,0.06)]">
+              <p className="font-semibold text-slate-900">RRG in TickerTap</p>
               <p className="mt-2">
                 Zerodha helps us with holdings, tradable stocks, ETFs, quotes, and daily historical candles through your existing backend.
                 Sector indices still rely on your mixed backend path, because not every index behaves like a normal tradable instrument in Zerodha.
               </p>
               <p className="mt-3 text-xs text-slate-500">
-                This is the first linked version. Next easy upgrades are export, drag/zoom, playback animation, and server-side multi-symbol batching.
+                This linked version now prefers live history, but it also keeps the screen usable when provider overlap is weak.
               </p>
             </div>
           </div>
