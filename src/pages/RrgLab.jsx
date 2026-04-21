@@ -5,9 +5,9 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { getLiveMarketHistory, getZerodhaHoldings } from '@/lib/brokerClient';
 import {
-  buildDemoRrgSnapshot,
   buildRrgSnapshot,
   formatRrgSymbol,
+  inspectRrgCoverage,
   quadrantTone,
   RRG_BENCHMARKS,
   RRG_DEFAULT_WATCHLISTS,
@@ -270,16 +270,28 @@ export default function RrgLab() {
     [data?.historyMap, benchmark.symbol, tailLength, timeframe, includePartial, labels],
   );
 
-  const fallbackSnapshot = useMemo(() => {
-    if (snapshot.length || isLoading) return [];
-    return buildDemoRrgSnapshot(watchlist.slice(0, 6), {
+  const coverage = useMemo(
+    () => inspectRrgCoverage(data?.historyMap || {}, benchmark.symbol, {
       tailLength,
+      timeframe,
+      includePartial,
       labels,
-    });
-  }, [snapshot, isLoading, watchlist, tailLength, labels]);
+    }),
+    [data?.historyMap, benchmark.symbol, tailLength, timeframe, includePartial, labels],
+  );
 
-  const renderedSnapshot = snapshot.length ? snapshot : fallbackSnapshot;
-  const isDemoMode = !snapshot.length && fallbackSnapshot.length > 0;
+  const missingSymbols = useMemo(
+    () => [
+      ...(coverage.benchmarkReady ? [] : [benchmark.label]),
+      ...coverage.items.filter((item) => item.status === 'missing_history').map((item) => item.label),
+    ],
+    [coverage, benchmark.label],
+  );
+
+  const overlapSymbols = useMemo(
+    () => coverage.items.filter((item) => item.status === 'insufficient_overlap'),
+    [coverage],
+  );
 
   const latestDate = useMemo(() => {
     const benchmarkPoints = data?.historyMap?.[benchmark.symbol]?.points || [];
@@ -426,27 +438,30 @@ export default function RrgLab() {
 
             {isLoading ? (
               <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-10 text-center text-slate-500">Loading RRG history...</div>
-            ) : renderedSnapshot.length ? (
-              <>
-                {isDemoMode ? (
-                  <div className="mb-4 rounded-[20px] border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-                    Live backend history was too thin for a proper snapshot, so a demo rotation view is shown to keep the screen usable while we wait for stronger overlapping candles.
-                  </div>
-                ) : null}
-                <RrgCanvas snapshot={renderedSnapshot} />
-              </>
+            ) : snapshot.length ? (
+              <RrgCanvas snapshot={snapshot} />
             ) : (
               <div className="rounded-[24px] border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900">
                 No RRG snapshot could be created from the current backend history set.
                 <div className="mt-2 text-amber-800">
                   Most likely reasons: backend sleep, provider gaps, or too few overlapping candles for the selected watchlist.
                 </div>
+                <div className="mt-3 text-amber-800">
+                  No synthetic graph is shown now. This panel only renders when real overlapping history is strong enough.
+                </div>
               </div>
             )}
 
-            {data?.failures?.length ? (
+            {missingSymbols.length ? (
               <div className="mt-4 rounded-[20px] border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
-                Missing history for: {data.failures.map((symbol) => labels[symbol] || formatRrgSymbol(symbol, mode)).join(', ')}
+                Missing history for: {missingSymbols.join(', ')}
+              </div>
+            ) : null}
+
+            {overlapSymbols.length ? (
+              <div className="mt-4 rounded-[20px] border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+                Insufficient overlapping candles for:{' '}
+                {overlapSymbols.map((item) => `${item.label} (${item.alignedPoints}/${item.minimumAligned})`).join(', ')}
               </div>
             ) : null}
           </div>
@@ -519,7 +534,7 @@ export default function RrgLab() {
                 Sector indices still rely on your mixed backend path, because not every index behaves like a normal tradable instrument in Zerodha.
               </p>
               <p className="mt-3 text-xs text-slate-500">
-                This linked version now prefers live history, but it also keeps the screen usable when provider overlap is weak.
+                This linked version now avoids synthetic fallback charts. If overlap is weak, it will show diagnostics instead of pretending the plotted rotation is real.
               </p>
             </div>
           </div>

@@ -192,6 +192,52 @@ export function buildRrgSnapshot(historyMap, benchmarkSymbol, { tailLength = 10,
     .sort((left, right) => right.score - left.score);
 }
 
+export function inspectRrgCoverage(historyMap, benchmarkSymbol, { tailLength = 10, timeframe = 'weekly', includePartial = false, labels = {} } = {}) {
+  const benchmarkRaw = historyMap?.[benchmarkSymbol]?.points || [];
+  const benchmarkPoints = resampleHistoryPoints(benchmarkRaw, timeframe, includePartial);
+  const benchmarkReady = benchmarkPoints.length > 0;
+  const benchmarkSeries = new Map(benchmarkPoints.map((point) => [toDateKey(point.date), Number(point.close)]));
+
+  const symbols = Object.keys(historyMap || {}).filter((symbol) => symbol !== benchmarkSymbol);
+  return {
+    benchmarkReady,
+    benchmarkPoints: benchmarkPoints.length,
+    items: symbols.map((symbol) => {
+      const payload = historyMap?.[symbol];
+      const rawPoints = payload?.points || [];
+      const resampled = resampleHistoryPoints(rawPoints, timeframe, includePartial);
+      const aligned = benchmarkReady
+        ? resampled.filter((point) => {
+            const key = toDateKey(point.date);
+            const close = Number(point.close);
+            const benchmarkClose = benchmarkSeries.get(key);
+            return Number.isFinite(close) && Number.isFinite(benchmarkClose) && benchmarkClose > 0;
+          })
+        : [];
+
+      const minimumAligned = Math.max(tailLength + RRG_MOMENTUM_PERIOD, 24);
+      let status = 'ok';
+      if (!rawPoints.length) {
+        status = 'missing_history';
+      } else if (!benchmarkReady) {
+        status = 'missing_benchmark';
+      } else if (aligned.length < minimumAligned) {
+        status = 'insufficient_overlap';
+      }
+
+      return {
+        symbol,
+        label: labels[symbol] || symbol,
+        rawPoints: rawPoints.length,
+        resampledPoints: resampled.length,
+        alignedPoints: aligned.length,
+        minimumAligned,
+        status,
+      };
+    }),
+  };
+}
+
 export function toRrg100(value) {
   return 100 + value * 4;
 }
@@ -203,35 +249,4 @@ export function quadrantTone(quadrant) {
     Lagging: '#ef4444',
     Improving: '#60a5fa',
   }[quadrant] || '#cbd5e1';
-}
-
-export function buildDemoRrgSnapshot(symbols = [], { labels = {}, tailLength = 10 } = {}) {
-  const quadrants = ['Leading', 'Weakening', 'Lagging', 'Improving'];
-  return symbols.map((symbol, index) => {
-    const baseRatio = [-0.9, 1.1, -1.2, 0.7][index % 4];
-    const baseMomentum = [0.8, -0.7, -1.05, 1.15][index % 4];
-    const direction = index % 2 === 0 ? 1 : -1;
-    const tail = Array.from({ length: tailLength }, (_, step) => {
-      const progress = step / Math.max(tailLength - 1, 1);
-      const wave = Math.sin((index + 1) * 0.7 + progress * Math.PI) * 0.18;
-      const drift = (progress - 0.5) * 0.6 * direction;
-      return {
-        date: new Date(Date.now() - (tailLength - step) * 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-        rsRatio: baseRatio + drift + wave,
-        rsMomentum: baseMomentum + drift * 0.7 - wave * 0.85,
-      };
-    });
-
-    const latest = tail[tail.length - 1];
-    return {
-      symbol,
-      label: labels[symbol] || symbol,
-      quadrant: quadrants[index % quadrants.length],
-      rsRatio: latest.rsRatio,
-      rsMomentum: latest.rsMomentum,
-      score: latest.rsRatio + latest.rsMomentum,
-      tail,
-      demo: true,
-    };
-  });
 }
