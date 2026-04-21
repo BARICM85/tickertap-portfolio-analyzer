@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { BarChart3, Briefcase, Cpu, Eye, LogOut, MonitorPlay, RefreshCw, Shield, TrendingUp, UserCircle2 } from 'lucide-react';
+import { Activity, BarChart3, Briefcase, Cpu, Eye, LogOut, MonitorPlay, RefreshCw, Shield, TrendingUp, UserCircle2 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { toast } from 'sonner';
@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { path: '/Dashboard', label: 'Dashboard', icon: BarChart3 },
   { path: '/Portfolio', label: 'Portfolio', icon: Briefcase },
   { path: '/RiskAnalysis', label: 'Risk Lab', icon: Shield },
+  { path: '/RrgLab', label: 'RRG Lab', icon: Activity },
   { path: '/TradingTerminal', label: 'Trading Terminal', icon: MonitorPlay },
   { path: '/AlgoTrading', label: 'Algo Trading', icon: Cpu },
   { path: '/Watchlist', label: 'Watchlist', icon: Eye },
@@ -27,8 +28,8 @@ function NavLink({ item, active, onClick }) {
       onClick={onClick}
       className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition-all ${
         active
-          ? 'bg-orange-500 text-white shadow-[0_12px_30px_rgba(249,115,22,0.18)]'
-          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
+          ? 'bg-amber-300 text-slate-950 shadow-[0_12px_30px_rgba(245,158,11,0.18)]'
+          : 'text-slate-300 hover:bg-white/[0.06] hover:text-white'
       }`}
     >
       <item.icon className="h-4 w-4" />
@@ -131,29 +132,29 @@ export default function AppLayout() {
   };
 
   const syncBadgeClassName = syncStatus.mode === 'active'
-    ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+    ? 'border-emerald-400/20 bg-emerald-400/12 text-emerald-200'
     : syncStatus.mode === 'syncing'
-      ? 'border-cyan-300 bg-cyan-50 text-cyan-700'
+      ? 'border-cyan-400/20 bg-cyan-400/12 text-cyan-200'
       : syncStatus.mode === 'unavailable'
-        ? 'border-rose-300 bg-rose-50 text-rose-700'
-        : 'border-slate-200 bg-white text-slate-600';
+        ? 'border-rose-400/20 bg-rose-400/12 text-rose-200'
+        : 'border-white/10 bg-white/[0.03] text-slate-300';
 
   const accountCard = isAuthenticated ? (
-    <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2">
       {user?.picture ? (
         <img src={user.picture} alt={user.name} className="h-9 w-9 rounded-full object-cover" />
       ) : (
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-orange-100 text-orange-600">
+        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-300/15 text-amber-200">
           <UserCircle2 className="h-5 w-5" />
         </div>
       )}
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-slate-900">{user?.name || user?.email}</p>
-        <p className="truncate text-xs text-slate-500">{user?.email}</p>
+        <p className="truncate text-sm font-medium text-white">{user?.name || user?.email}</p>
+        <p className="truncate text-xs text-slate-400">{user?.email}</p>
       </div>
       <button
         onClick={logout}
-        className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-100"
+        className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10"
       >
         <LogOut className="h-4 w-4" />
         Sign out
@@ -166,18 +167,18 @@ export default function AppLayout() {
   ) : null;
 
   return (
-    <div className="app-shell">
-      <div className="app-backdrop pointer-events-none fixed inset-0 opacity-60" />
+    <div className="min-h-screen bg-[#07111c] text-white">
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(245,158,11,0.15),_transparent_28%),radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.18),_transparent_32%),linear-gradient(180deg,_#09121f,_#07111c_55%,_#08131f)]" />
 
-      <header className="fixed inset-x-0 top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur-2xl">
+      <header className="fixed inset-x-0 top-0 z-40 border-b border-white/8 bg-[#07111c]/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1680px] items-center justify-between px-4 py-4 lg:px-8">
           <div className="flex items-center gap-3">
-            <div className="rounded-2xl bg-orange-500 p-2 text-white shadow-[0_10px_30px_rgba(249,115,22,0.22)]">
+            <div className="rounded-2xl bg-amber-300 p-2 text-slate-950">
               <TrendingUp className="h-4 w-4" />
             </div>
             <div>
-              <p className="text-sm font-semibold tracking-[0.03em] text-slate-900">TickerTap Harbor</p>
-              <p className="text-xs text-slate-500">Portfolio analyzer and trading desk</p>
+              <p className="text-sm font-semibold">TickerTap Clone</p>
+              <p className="text-xs text-slate-400">Portfolio analyzer</p>
             </div>
           </div>
 
@@ -195,7 +196,7 @@ export default function AppLayout() {
               <button
                 onClick={handleManualSync}
                 disabled={manualSyncing || syncStatus.mode === 'local'}
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${manualSyncing ? 'animate-spin' : ''}`} />
                 Sync now
@@ -214,14 +215,14 @@ export default function AppLayout() {
               <button
                 onClick={handleManualSync}
                 disabled={manualSyncing || syncStatus.mode === 'local'}
-                className="mb-2 ml-2 inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                className="mb-2 ml-2 inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${manualSyncing ? 'animate-spin' : ''}`} />
                 Sync now
               </button>
             ) : null}
             {accountCard ? <div className="mb-2">{accountCard}</div> : null}
-            <div className="flex gap-2 overflow-x-auto pb-1">
+            <div className="flex gap-2 overflow-x-auto">
             {NAV_ITEMS.map((item) => (
               <NavLink key={item.path} item={item} active={location.pathname === item.path} />
             ))}
@@ -229,30 +230,30 @@ export default function AppLayout() {
           </div>
         </div>
 
-        <div className="border-t border-slate-200">
+        <div className="border-t border-white/6">
           <div className="mx-auto max-w-[1680px] px-4 py-1.5 lg:px-8">
             {hasDelayedIndices ? (
-              <p className="mb-1 text-[10px] uppercase tracking-[0.16em] text-orange-500/80">Last close shown for unavailable/holiday indices</p>
+              <p className="mb-1 text-[10px] uppercase tracking-[0.16em] text-amber-200/60">Last close shown for unavailable/holiday indices</p>
             ) : null}
-            <div className="flex gap-2 overflow-x-auto whitespace-nowrap pb-1 [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent">
+            <div className="flex gap-2 overflow-x-auto whitespace-nowrap pb-1 [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-track]:bg-transparent">
               {indexItems.length ? indexItems.map((item) => {
                 const positive = Number(item.changePercent || 0) >= 0;
                 return (
-                  <div key={item.key} className="flex min-w-fit items-center gap-2 rounded-[18px] border border-slate-200 bg-white px-2.5 py-1.5 backdrop-blur shadow-sm">
+                  <div key={item.key} className="flex min-w-fit items-center gap-2 rounded-[18px] border border-white/8 bg-white/[0.03] px-2.5 py-1.5">
                     <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{item.label}</p>
-                      <p className="mt-0.5 text-[15px] font-semibold leading-none text-slate-900">{formatCurrency(item.price, item.currency || 'INR').replace('.00', '')}</p>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-300">{item.label}</p>
+                      <p className="mt-0.5 text-[15px] font-semibold leading-none text-white">{formatCurrency(item.price, item.currency || 'INR').replace('.00', '')}</p>
                     </div>
-                    <div className={`rounded-full px-2 py-1 text-[11px] font-semibold leading-none ${positive ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                    <div className={`rounded-full px-2 py-1 text-[11px] font-semibold leading-none ${positive ? 'bg-emerald-400/15 text-emerald-300' : 'bg-rose-400/15 text-rose-300'}`}>
                       {positive ? '+' : ''}{Number(item.changePercent || 0).toFixed(2)}%
                     </div>
                     {item.delayed ? (
-                      <div className="rounded-full bg-orange-50 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-orange-600">LC</div>
+                      <div className="rounded-full bg-amber-300/12 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-amber-200">LC</div>
                     ) : null}
                   </div>
                 );
               }) : (
-                <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-500">
+                <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 text-sm text-slate-400">
                   Loading NSE indices...
                 </div>
               )}
@@ -262,11 +263,6 @@ export default function AppLayout() {
       </header>
       <div className="relative mx-auto max-w-[1680px] px-3 pb-10 pt-[18.5rem] sm:px-4 sm:pt-[17rem] lg:px-8 lg:pt-48">
         <main className="relative z-10 min-w-0 pt-2 lg:pt-0">
-          <div className="mb-5 flex flex-wrap items-center gap-2 text-xs text-slate-400">
-            <span className="app-chip px-3 py-1.5">Theme: Harbor Ledger</span>
-            <span className="app-chip px-3 py-1.5">Clearer dashboards</span>
-            <span className="app-chip px-3 py-1.5">Mobile-friendly navigation</span>
-          </div>
           <Outlet />
         </main>
       </div>

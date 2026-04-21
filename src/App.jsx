@@ -9,6 +9,7 @@ import AlgoTrading from '@/pages/AlgoTrading';
 import Dashboard from '@/pages/Dashboard';
 import OptionChainPage from '@/pages/OptionChainPage';
 import Portfolio from '@/pages/Portfolio';
+import RrgLab from '@/pages/RrgLab';
 import StockDetail from '@/pages/StockDetail';
 import RiskAnalysis from '@/pages/RiskAnalysis';
 import TradingTerminal from '@/pages/TradingTerminal';
@@ -31,6 +32,7 @@ function AuthenticatedApp() {
       <Route element={<AppLayout />}>
         <Route path="/Dashboard" element={<Dashboard />} />
         <Route path="/Portfolio" element={<Portfolio />} />
+        <Route path="/RrgLab" element={<RrgLab />} />
         <Route path="/OptionChain" element={<OptionChainPage />} />
         <Route path="/StockDetail" element={<StockDetail />} />
         <Route path="/RiskAnalysis" element={<RiskAnalysis />} />
