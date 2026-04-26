@@ -6,6 +6,7 @@ Standalone React + Vite stock portfolio analyzing app with Firebase Google login
 
 - Dashboard with allocation, P&L, market movers, portfolio pulse, and watchlist triggers
 - Dashboard backtest lane that runs each holding one by one and compares strategy return against buy-and-hold
+- Custom testing lane that imports symbols from Excel and scans three SMA rules with `<`, `>`, or `=`
 - Portfolio workspace with manual entry, CSV/JSON import, JSON export, search, and Zerodha holdings sync
 - Stock detail view with valuation snapshot, thesis notes, scenario planning, and generated analysis
 - Risk lab with concentration checks, sector exposure, beta view, and rebalance suggestions
@@ -98,7 +99,7 @@ For hosting:
 
 ## Backtesting and local AI
 
-The dashboard now includes a per-stock backtest section. It uses the backend history feed, runs each holding sequentially, and optionally asks Ollama for a short portfolio summary.
+The dashboard now includes a per-stock backtest section and a custom testing section. The custom lane can import symbols from Excel and run a three-SMA scan using configurable `<`, `>`, or `=` rules.
 
 Useful backend env vars:
 

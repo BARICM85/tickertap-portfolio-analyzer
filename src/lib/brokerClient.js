@@ -121,6 +121,14 @@ export function runPortfolioBacktest(payload = {}) {
   });
 }
 
+export function runCustomTesting(payload = {}) {
+  return request('/api/backtest/custom', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    timeoutMs: 25000,
+  });
+}
+
 export function getLiveMarketQuote(symbol, options = {}) {
   const exchange = options.exchange || 'NSE';
   const { exchange: _exchange, ...requestOptions } = options;
