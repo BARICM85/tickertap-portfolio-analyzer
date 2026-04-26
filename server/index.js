@@ -1402,6 +1402,109 @@ function normalizeBacktestHoldings(holdings = []) {
     .filter(Boolean);
 }
 
+function normalizeCustomTestingSymbols(symbols = []) {
+  return symbols
+    .map((entry) => {
+      if (typeof entry === 'string') {
+        const symbol = String(entry || '').trim().toUpperCase();
+        if (!symbol) return null;
+        return {
+          symbol,
+          name: symbol,
+          exchange: 'NSE',
+        };
+      }
+
+      const symbol = String(entry?.symbol || entry?.tradingsymbol || entry?.ticker || '').trim().toUpperCase();
+      if (!symbol) return null;
+
+      return {
+        symbol,
+        name: String(entry?.name || entry?.company_name || symbol).trim(),
+        exchange: String(entry?.exchange || 'NSE').trim().toUpperCase() || 'NSE',
+      };
+    })
+    .filter(Boolean);
+}
+
+function normalizeSmaPeriod(value, fallback) {
+  const parsed = Math.round(Number(value));
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(200, Math.max(10, parsed));
+}
+
+function normalizeComparisonOperator(value) {
+  const normalized = String(value || '').trim();
+  return ['<', '>', '='].includes(normalized) ? normalized : '>';
+}
+
+function formatSmaRuleLabel(periods = [], operators = []) {
+  const [first = 20, second = 50, third = 100] = periods;
+  const [op1 = '>', op2 = '>'] = operators;
+  return `SMA${first} ${op1} SMA${second} ${op2} SMA${third}`;
+}
+
+function compareWithOperator(left, operator, right) {
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
+  const tolerance = Math.max(0.01, Math.abs(right) * 0.0025);
+  if (operator === '<') return left < right;
+  if (operator === '>') return left > right;
+  return Math.abs(left - right) <= tolerance;
+}
+
+function evaluateCustomSmaRule(points = [], periods = [], operators = []) {
+  const closes = points.map((point) => Number(point.close || 0));
+  const normalizedPeriods = [
+    normalizeSmaPeriod(periods[0], 20),
+    normalizeSmaPeriod(periods[1], 50),
+    normalizeSmaPeriod(periods[2], 100),
+  ];
+  const normalizedOperators = [
+    normalizeComparisonOperator(operators[0]),
+    normalizeComparisonOperator(operators[1]),
+  ];
+  const smaSeries = normalizedPeriods.map((period) => movingAverageSeries(closes, period));
+
+  let latestIndex = -1;
+  for (let index = points.length - 1; index >= 0; index -= 1) {
+    const price = closes[index];
+    if (!Number.isFinite(price) || price <= 0) continue;
+    const values = smaSeries.map((series) => series[index]);
+    if (values.every((value) => Number.isFinite(value))) {
+      latestIndex = index;
+      break;
+    }
+  }
+
+  if (latestIndex < 0) {
+    return {
+      passed: false,
+      latestIndex: -1,
+      latestDate: null,
+      latestClose: null,
+      smaValues: [],
+      expression: formatSmaRuleLabel(normalizedPeriods, normalizedOperators),
+      reason: 'Not enough history to calculate all SMA values.',
+    };
+  }
+
+  const latestClose = closes[latestIndex];
+  const smaValues = smaSeries.map((series) => Number(series[latestIndex] || 0));
+  const firstComparison = compareWithOperator(smaValues[0], normalizedOperators[0], smaValues[1]);
+  const secondComparison = compareWithOperator(smaValues[1], normalizedOperators[1], smaValues[2]);
+  const passed = firstComparison && secondComparison;
+
+  return {
+    passed,
+    latestIndex,
+    latestDate: points[latestIndex]?.date || null,
+    latestClose,
+    smaValues,
+    expression: formatSmaRuleLabel(normalizedPeriods, normalizedOperators),
+    reason: passed ? 'Rule matched on the latest available bar.' : 'Rule did not match on the latest available bar.',
+  };
+}
+
 function movingAverageSeries(values = [], length = 20) {
   const output = new Array(values.length).fill(null);
   if (values.length < length) return output;
@@ -1751,6 +1854,117 @@ const server = createServer(async (req, res) => {
           ollama: Boolean(trimTrailingSlash(OLLAMA_BASE_URL)),
           firecrawl: isFirecrawlConfigured(),
           engine: actualEngine,
+        },
+      });
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/backtest/custom') {
+      const rawBody = await readRequestBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(rawBody || '{}');
+      } catch {
+        body = {};
+      }
+
+      const strategy = String(body.strategy || 'sma').trim().toLowerCase();
+      if (strategy !== 'sma') {
+        return sendJson(res, 400, { error: 'Only the SMA custom test strategy is supported right now.' });
+      }
+
+      const symbols = normalizeCustomTestingSymbols(body.symbols || body.holdings || []);
+      if (!symbols.length) {
+        return sendJson(res, 200, {
+          strategy: 'sma',
+          symbols: [],
+          items: [],
+          summary: {
+            passCount: 0,
+            failCount: 0,
+            passRatePercent: 0,
+            bestSymbol: null,
+            worstSymbol: null,
+          },
+          rules: {
+            periods: [20, 50, 100],
+            operators: ['>', '>'],
+            expression: formatSmaRuleLabel([20, 50, 100], ['>', '>']),
+          },
+        });
+      }
+
+      const periods = [
+        normalizeSmaPeriod(body.period1 || body.periods?.[0], 20),
+        normalizeSmaPeriod(body.period2 || body.periods?.[1], 50),
+        normalizeSmaPeriod(body.period3 || body.periods?.[2], 100),
+      ];
+      const operators = [
+        normalizeComparisonOperator(body.operator1 || body.operators?.[0]),
+        normalizeComparisonOperator(body.operator2 || body.operators?.[1]),
+      ];
+      const range = String(body.range || '6mo').trim() || '6mo';
+
+      const items = [];
+      for (const symbolEntry of symbols) {
+        try {
+          const history = await fetchMarketHistory(symbolEntry.symbol, range, '1d', symbolEntry.exchange || 'NSE');
+          const points = history?.points || [];
+          if (!points.length) {
+            throw new Error('History feed unavailable.');
+          }
+
+          const evaluation = evaluateCustomSmaRule(points, periods, operators);
+          const latestPoint = points[evaluation.latestIndex] || null;
+          items.push({
+            symbol: symbolEntry.symbol,
+            name: symbolEntry.name,
+            exchange: symbolEntry.exchange,
+            historyPoints: points.length,
+            range,
+            strategy: 'sma',
+            ...evaluation,
+            latestDate: evaluation.latestDate || latestPoint?.date || null,
+            latestClose: evaluation.latestClose || latestPoint?.close || null,
+            smaValues: evaluation.smaValues.map((value, index) => ({
+              period: periods[index],
+              value,
+            })),
+          });
+        } catch (error) {
+          items.push({
+            symbol: symbolEntry.symbol,
+            name: symbolEntry.name,
+            exchange: symbolEntry.exchange,
+            historyPoints: 0,
+            range,
+            strategy: 'sma',
+            error: error.message || 'Custom SMA test failed.',
+          });
+        }
+      }
+
+      const successfulItems = items.filter((item) => !item.error);
+      const passCount = successfulItems.filter((item) => item.passed).length;
+      const failCount = successfulItems.length - passCount;
+      const passRatePercent = successfulItems.length ? (passCount / successfulItems.length) * 100 : 0;
+      const bestItem = successfulItems.find((item) => item.passed) || null;
+      const worstItem = successfulItems.find((item) => !item.passed) || null;
+
+      return sendJson(res, 200, {
+        strategy: 'sma',
+        symbols,
+        items,
+        summary: {
+          passCount,
+          failCount,
+          passRatePercent,
+          bestSymbol: bestItem?.symbol || null,
+          worstSymbol: worstItem?.symbol || null,
+        },
+        rules: {
+          periods,
+          operators,
+          expression: formatSmaRuleLabel(periods, operators),
         },
       });
     }

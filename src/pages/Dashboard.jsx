@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
 import BrokerSyncPanel from '@/components/integrations/BrokerSyncPanel';
 import PortfolioStats from '@/components/dashboard/PortfolioStats';
+import CustomTestingSection from '@/components/dashboard/CustomTestingSection';
 import BacktestSection from '@/components/dashboard/BacktestSection';
 import AllocationChart from '@/components/dashboard/AllocationChart';
 import PortfolioHistoryChart from '@/components/dashboard/PortfolioHistoryChart';
@@ -90,6 +91,8 @@ export default function Dashboard() {
       />
 
       <PortfolioStats analytics={analytics} />
+
+      <CustomTestingSection stocks={stocks} />
 
       <BacktestSection stocks={stocks} />
 
