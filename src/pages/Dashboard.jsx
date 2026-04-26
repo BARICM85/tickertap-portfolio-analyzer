@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
 import BrokerSyncPanel from '@/components/integrations/BrokerSyncPanel';
 import PortfolioStats from '@/components/dashboard/PortfolioStats';
+import BacktestSection from '@/components/dashboard/BacktestSection';
 import AllocationChart from '@/components/dashboard/AllocationChart';
 import PortfolioHistoryChart from '@/components/dashboard/PortfolioHistoryChart';
 import PnLChart from '@/components/dashboard/PnLChart';
@@ -89,6 +90,8 @@ export default function Dashboard() {
       />
 
       <PortfolioStats analytics={analytics} />
+
+      <BacktestSection stocks={stocks} />
 
       <div className="grid gap-6 xl:grid-cols-[1.25fr_0.95fr]">
         <Panel title="Portfolio Through Time" subtitle="Track invested capital, current value, and profit across your imported lots.">

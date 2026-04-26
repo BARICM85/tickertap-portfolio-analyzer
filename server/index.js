@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, appendFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { dirname, resolve } from 'node:path';
@@ -37,6 +38,18 @@ const AUTH_CONTEXT_PATH = resolve(projectRoot, env.ZERODHA_AUTH_CONTEXT_PATH || 
 const NATIVE_REDIRECT_URL = env.ZERODHA_NATIVE_REDIRECT_URL || 'tickertap://zerodha/callback';
 const FMP_API_KEY = env.FMP_API_KEY || '';
 const FMP_API_BASE_URL = env.FMP_API_BASE_URL || 'https://financialmodelingprep.com/stable';
+const OLLAMA_BASE_URL = env.OLLAMA_BASE_URL || '';
+const OLLAMA_MODEL = env.OLLAMA_MODEL || 'llama3.2:3b';
+const FIRECRAWL_API_BASE_URL = env.FIRECRAWL_API_BASE_URL || '';
+const FIRECRAWL_API_KEY = env.FIRECRAWL_API_KEY || '';
+const BACKTEST_RANGE = env.BACKTEST_RANGE || '2y';
+const BACKTEST_FAST_WINDOW = Math.max(2, Number(env.BACKTEST_FAST_WINDOW || 20));
+const BACKTEST_SLOW_WINDOW = Math.max(BACKTEST_FAST_WINDOW + 1, Number(env.BACKTEST_SLOW_WINDOW || 50));
+const BACKTEST_INITIAL_CASH = Math.max(1, Number(env.BACKTEST_INITIAL_CASH || 100000));
+const BACKTEST_COMMISSION_BPS = Math.max(0, Number(env.BACKTEST_COMMISSION_BPS || 0));
+const BACKTEST_BENCHMARK_SYMBOL = env.BACKTEST_BENCHMARK_SYMBOL || '^NSEI';
+const BACKTEST_ENGINE = String(env.BACKTEST_ENGINE || 'js').trim().toLowerCase();
+const PYTHON_BIN = env.PYTHON_BIN || 'python3';
 const INSTRUMENTS_CACHE_PATH = resolve(projectRoot, 'server/.zerodha-instruments-cache.json');
 const POSTBACK_LOG_PATH = resolve(projectRoot, 'server/.zerodha-postbacks.log');
 const YAHOO_HEADERS = {
@@ -360,6 +373,10 @@ function summarizeCorporateActions(items = []) {
   };
 }
 
+function isFirecrawlConfigured() {
+  return Boolean(FIRECRAWL_API_KEY || /localhost|127\.0\.0\.1/i.test(FIRECRAWL_API_BASE_URL));
+}
+
 async function fetchFmp(path, params = {}) {
   if (!FMP_API_KEY) {
     throw new Error('FMP feed not configured.');
@@ -380,6 +397,91 @@ async function fetchFmp(path, params = {}) {
     throw new Error(data?.error || data?.message || 'FMP request failed.');
   }
   return data;
+}
+
+async function fetchFirecrawlSearch(query = '', limit = 3) {
+  if (!isFirecrawlConfigured()) {
+    throw new Error('Firecrawl feed not configured.');
+  }
+
+  const baseUrl = trimTrailingSlash(FIRECRAWL_API_BASE_URL || 'https://api.firecrawl.dev');
+  const response = await fetch(`${baseUrl}/v2/search`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(FIRECRAWL_API_KEY ? { Authorization: `Bearer ${FIRECRAWL_API_KEY}` } : {}),
+    },
+    body: JSON.stringify({
+      query,
+      limit: Math.max(1, Math.min(Number(limit) || 3, 5)),
+      sources: ['web'],
+      timeout: 15000,
+      scrapeOptions: {
+        formats: ['markdown'],
+        onlyMainContent: true,
+        maxAge: 24 * 60 * 60 * 1000,
+      },
+    }),
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok || data?.success === false) {
+    throw new Error(data?.error || data?.message || 'Firecrawl request failed.');
+  }
+
+  return Array.isArray(data?.data?.web) ? data.data.web : [];
+}
+
+function buildFirecrawlQuery(symbol = '', name = '', exchange = '') {
+  const parts = [symbol, name, exchange, 'stock news', 'earnings', 'latest'];
+  return parts.map((part) => String(part || '').trim()).filter(Boolean).join(' ');
+}
+
+function summarizeFirecrawlItems(items = []) {
+  const entries = items
+    .filter(Boolean)
+    .map((item) => ({
+      title: String(item.title || '').trim(),
+      description: String(item.description || '').trim(),
+      url: String(item.url || '').trim(),
+    }))
+    .filter((item) => item.title || item.description || item.url);
+
+  if (!entries.length) {
+    return {
+      headline: null,
+      summary: null,
+      items: [],
+    };
+  }
+
+  return {
+    headline: entries[0].title || entries[0].description || entries[0].url,
+    summary: entries
+      .slice(0, 3)
+      .map((item) => item.title || item.description)
+      .filter(Boolean)
+      .join(' | '),
+    items: entries.slice(0, 3),
+  };
+}
+
+async function fetchFirecrawlContext(symbol = '', name = '', exchange = '') {
+  if (!isFirecrawlConfigured()) {
+    return null;
+  }
+
+  const query = buildFirecrawlQuery(symbol, name, exchange);
+  if (!query) return null;
+
+  const results = await fetchFirecrawlSearch(query, 3);
+  const context = summarizeFirecrawlItems(results);
+  if (!context.items.length) return null;
+
+  return {
+    query,
+    ...context,
+  };
 }
 
 async function resolveCompanyFeedSymbol(symbol = '') {
@@ -1278,6 +1380,214 @@ async function fetchMarketHistory(symbol, range = '6mo', interval = '1d', exchan
   throw new Error(`No chart history available for ${candidates.join(', ')}.`);
 }
 
+function trimTrailingSlash(value = '') {
+  return String(value || '').replace(/\/+$/, '');
+}
+
+function normalizeBacktestHoldings(holdings = []) {
+  return holdings
+    .map((holding) => {
+      const symbol = String(holding?.symbol || holding?.tradingsymbol || '').trim().toUpperCase();
+      if (!symbol) return null;
+
+      return {
+        symbol,
+        name: String(holding?.name || holding?.company_name || symbol).trim(),
+        exchange: String(holding?.exchange || 'NSE').trim().toUpperCase() || 'NSE',
+        quantity: Number(holding?.quantity || 0),
+        buyPrice: Number(holding?.buy_price || holding?.average_price || holding?.current_price || 0),
+        currentPrice: Number(holding?.current_price || holding?.last_price || holding?.buy_price || 0),
+      };
+    })
+    .filter(Boolean);
+}
+
+function movingAverageSeries(values = [], length = 20) {
+  const output = new Array(values.length).fill(null);
+  if (values.length < length) return output;
+
+  let rolling = 0;
+  for (let index = 0; index < values.length; index += 1) {
+    rolling += values[index];
+    if (index >= length) {
+      rolling -= values[index - length];
+    }
+    if (index >= length - 1) {
+      output[index] = rolling / length;
+    }
+  }
+  return output;
+}
+
+function calculateReturnPercent(startValue, endValue) {
+  if (!Number.isFinite(startValue) || !Number.isFinite(endValue) || startValue <= 0) return 0;
+  return ((endValue - startValue) / startValue) * 100;
+}
+
+function buildBenchmarkMap(points = []) {
+  return new Map(points.map((point) => [point.date, Number(point.close || 0)]));
+}
+
+function runSequentialBacktest(points = [], benchmarkPoints = [], settings = {}) {
+  const closes = points.map((point) => Number(point.close || 0));
+  const benchmarkMap = buildBenchmarkMap(benchmarkPoints);
+  const fastWindow = Math.max(2, Number(settings.fastWindow || BACKTEST_FAST_WINDOW));
+  const slowWindow = Math.max(fastWindow + 1, Number(settings.slowWindow || BACKTEST_SLOW_WINDOW));
+  const initialCash = Math.max(1, Number(settings.initialCash || BACKTEST_INITIAL_CASH));
+  const commissionRate = Math.max(0, Number(settings.commissionBps || BACKTEST_COMMISSION_BPS)) / 10000;
+  const fastSeries = movingAverageSeries(closes, fastWindow);
+  const slowSeries = movingAverageSeries(closes, slowWindow);
+  const firstClose = closes.find((value) => Number.isFinite(value) && value > 0) || 0;
+  const benchmarkStart = benchmarkPoints.find((point) => Number(point.close || 0) > 0)?.close || 0;
+  let cash = initialCash;
+  let shares = 0;
+  let entryCash = 0;
+  let tradeEntries = 0;
+  let completedTrades = 0;
+  let profitableTrades = 0;
+  let peakEquity = initialCash;
+  let maxDrawdown = 0;
+  const curve = [];
+
+  for (let index = 0; index < points.length; index += 1) {
+    const point = points[index];
+    const price = Number(point.close || 0);
+    if (!Number.isFinite(price) || price <= 0) continue;
+
+    const fast = fastSeries[index];
+    const slow = slowSeries[index];
+    const prevFast = fastSeries[index - 1];
+    const prevSlow = slowSeries[index - 1];
+    const hasSignal = Number.isFinite(fast) && Number.isFinite(slow) && Number.isFinite(prevFast) && Number.isFinite(prevSlow);
+    const buySignal = hasSignal && prevFast <= prevSlow && fast > slow;
+    const sellSignal = hasSignal && prevFast >= prevSlow && fast < slow;
+
+    if (buySignal && shares === 0) {
+      const buyPower = cash * (1 - commissionRate);
+      shares = buyPower / price;
+      entryCash = cash;
+      cash = 0;
+      tradeEntries += 1;
+    } else if (sellSignal && shares > 0) {
+      const exitValue = shares * price * (1 - commissionRate);
+      const tradePnL = exitValue - entryCash;
+      if (tradePnL > 0) profitableTrades += 1;
+      completedTrades += 1;
+      cash = exitValue;
+      shares = 0;
+      entryCash = 0;
+    }
+
+    const equity = cash + (shares * price);
+    peakEquity = Math.max(peakEquity, equity);
+    if (peakEquity > 0) {
+      maxDrawdown = Math.max(maxDrawdown, (peakEquity - equity) / peakEquity);
+    }
+
+    const benchmarkClose = benchmarkMap.get(point.date) || 0;
+    const benchmarkValue = benchmarkStart > 0 && benchmarkClose > 0
+      ? initialCash * (benchmarkClose / benchmarkStart)
+      : null;
+
+    curve.push({
+      date: point.date,
+      equity,
+      benchmark: benchmarkValue,
+      price,
+      signal: buySignal ? 'BUY' : sellSignal ? 'SELL' : shares > 0 ? 'HOLD' : 'WAIT',
+    });
+  }
+
+  const finalPrice = closes.filter((value) => Number.isFinite(value) && value > 0).at(-1) || 0;
+  const finalEquity = cash + (shares * finalPrice);
+  const benchmarkFinal = benchmarkPoints.filter((point) => Number(point.close || 0) > 0).at(-1)?.close || 0;
+
+  return {
+    strategyReturnPercent: calculateReturnPercent(initialCash, finalEquity),
+    buyHoldReturnPercent: calculateReturnPercent(firstClose, finalPrice),
+    benchmarkReturnPercent: benchmarkStart > 0 && benchmarkFinal > 0
+      ? calculateReturnPercent(benchmarkStart, benchmarkFinal)
+      : 0,
+    maxDrawdownPercent: maxDrawdown * 100,
+    winRatePercent: completedTrades > 0 ? (profitableTrades / completedTrades) * 100 : 0,
+    trades: tradeEntries,
+    tradeEntries,
+    completedTrades,
+    finalEquity,
+    curve,
+    lastSignal: curve.at(-1)?.signal || 'WAIT',
+  };
+}
+
+async function summarizeBacktestsWithOllama(payload) {
+  const baseUrl = trimTrailingSlash(OLLAMA_BASE_URL);
+  if (!baseUrl) return null;
+
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), 12000) : null;
+
+  try {
+    const response = await fetch(`${baseUrl}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller?.signal,
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        stream: false,
+        options: { temperature: 0.2 },
+        prompt: [
+          'You are writing a concise portfolio backtest summary.',
+          'Summarize the results in 2 to 3 short sentences.',
+          'Mention the strongest stock, the weakest stock, and whether the system outperformed buy-and-hold overall.',
+          `Data: ${JSON.stringify(payload)}`,
+        ].join('\n'),
+      }),
+    });
+
+    const data = await response.json().catch(() => null);
+    const text = String(data?.response || '').trim();
+    return text || null;
+  } catch {
+    return null;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+function runVectorbtBacktest(points = [], benchmarkPoints = [], settings = {}) {
+  if (!points.length) return null;
+
+  const scriptPath = resolve(projectRoot, 'server/vectorbt_backtest.py');
+  if (!existsSync(scriptPath)) return null;
+
+  const payload = {
+    points,
+    benchmarkPoints,
+    settings: {
+      fastWindow: Number(settings.fastWindow || BACKTEST_FAST_WINDOW),
+      slowWindow: Number(settings.slowWindow || BACKTEST_SLOW_WINDOW),
+      initialCash: Number(settings.initialCash || BACKTEST_INITIAL_CASH),
+      commissionBps: Number(settings.commissionBps || BACKTEST_COMMISSION_BPS),
+    },
+  };
+
+  const result = spawnSync(PYTHON_BIN, [scriptPath], {
+    input: JSON.stringify(payload),
+    encoding: 'utf8',
+    maxBuffer: 10 * 1024 * 1024,
+  });
+
+  if (result.status !== 0 || !result.stdout) return null;
+
+  try {
+    const parsed = JSON.parse(result.stdout);
+    if (parsed?.error) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 const server = createServer(async (req, res) => {
   if (!req.url) return sendJson(res, 400, { error: 'Missing URL.' });
   const url = new URL(req.url, `http://localhost:${PORT}`);
@@ -1294,6 +1604,155 @@ const server = createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && url.pathname === '/api/health') {
       return sendJson(res, 200, { ok: true });
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/backtest/portfolio') {
+      const rawBody = await readRequestBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(rawBody || '{}');
+      } catch {
+        body = {};
+      }
+
+      const holdings = normalizeBacktestHoldings(body.holdings || []);
+      const requestedEngine = BACKTEST_ENGINE === 'vectorbt' ? 'vectorbt' : 'sma-js';
+      if (!holdings.length) {
+        return sendJson(res, 200, {
+          items: [],
+          summary: {
+            portfolioStrategyReturnPercent: 0,
+            averageStrategyReturnPercent: 0,
+            winRatePercent: 0,
+            maxDrawdownPercent: 0,
+            bestSymbol: null,
+            worstSymbol: null,
+          },
+          integrations: {
+            ollama: Boolean(trimTrailingSlash(OLLAMA_BASE_URL)),
+            firecrawl: isFirecrawlConfigured(),
+            engine: requestedEngine,
+          },
+        });
+      }
+
+      const range = String(body.range || BACKTEST_RANGE || '2y').trim() || BACKTEST_RANGE;
+      const settings = {
+        fastWindow: Number(body.fastWindow || BACKTEST_FAST_WINDOW),
+        slowWindow: Number(body.slowWindow || BACKTEST_SLOW_WINDOW),
+        initialCash: Number(body.initialCash || BACKTEST_INITIAL_CASH),
+        commissionBps: Number(body.commissionBps || BACKTEST_COMMISSION_BPS),
+      };
+
+      let benchmarkPoints = [];
+      try {
+        const benchmark = await fetchMarketHistory(BACKTEST_BENCHMARK_SYMBOL, range, '1d', 'NSE');
+        benchmarkPoints = benchmark?.points || [];
+      } catch {
+        benchmarkPoints = [];
+      }
+
+      const items = [];
+      for (const holding of holdings) {
+        try {
+          const [historyResult, firecrawlResult] = await Promise.allSettled([
+            fetchMarketHistory(holding.symbol, range, '1d', holding.exchange || 'NSE'),
+            fetchFirecrawlContext(holding.symbol, holding.name, holding.exchange || 'NSE'),
+          ]);
+
+          const history = historyResult.status === 'fulfilled' ? historyResult.value : null;
+          const newsContext = firecrawlResult.status === 'fulfilled' ? firecrawlResult.value : null;
+          if (!history?.points?.length) {
+            throw new Error('History feed unavailable.');
+          }
+          const vectorbtResult = BACKTEST_ENGINE === 'vectorbt'
+            ? runVectorbtBacktest(history.points || [], benchmarkPoints, settings)
+            : null;
+          const result = vectorbtResult || runSequentialBacktest(history.points || [], benchmarkPoints, settings);
+          items.push({
+            symbol: holding.symbol,
+            name: holding.name,
+            exchange: holding.exchange,
+            quantity: holding.quantity,
+            currentPrice: holding.currentPrice || history.points?.at(-1)?.close || 0,
+            historyPoints: history.points?.length || 0,
+            engine: vectorbtResult ? 'vectorbt' : 'sma-js',
+            newsContext,
+            ...result,
+            curve: (result?.curve || []).slice(-90),
+          });
+        } catch (error) {
+          items.push({
+            symbol: holding.symbol,
+            name: holding.name,
+            exchange: holding.exchange,
+            quantity: holding.quantity,
+            currentPrice: holding.currentPrice || 0,
+            historyPoints: 0,
+            error: error.message || 'Backtest failed.',
+          });
+        }
+      }
+
+      const successfulItems = items.filter((item) => !item.error);
+      const strategyAverage = successfulItems.length
+        ? successfulItems.reduce((sum, item) => sum + Number(item.strategyReturnPercent || 0), 0) / successfulItems.length
+        : 0;
+      const winRateAverage = successfulItems.length
+        ? successfulItems.reduce((sum, item) => sum + Number(item.winRatePercent || 0), 0) / successfulItems.length
+        : 0;
+      const drawdownMax = successfulItems.length
+        ? Math.max(...successfulItems.map((item) => Number(item.maxDrawdownPercent || 0)))
+        : 0;
+      const bestItem = [...successfulItems].sort((left, right) => Number(right.strategyReturnPercent || 0) - Number(left.strategyReturnPercent || 0))[0] || null;
+      const worstItem = [...successfulItems].sort((left, right) => Number(left.strategyReturnPercent || 0) - Number(right.strategyReturnPercent || 0))[0] || null;
+      const actualEngine = successfulItems.some((item) => item.engine === 'vectorbt') ? 'vectorbt' : 'sma-js';
+      const aiSummary = await summarizeBacktestsWithOllama({
+        holdings: successfulItems.slice(0, 6).map((item) => ({
+          symbol: item.symbol,
+          name: item.name,
+          strategyReturnPercent: Number(item.strategyReturnPercent || 0).toFixed(2),
+          buyHoldReturnPercent: Number(item.buyHoldReturnPercent || 0).toFixed(2),
+          winRatePercent: Number(item.winRatePercent || 0).toFixed(2),
+          maxDrawdownPercent: Number(item.maxDrawdownPercent || 0).toFixed(2),
+          newsContext: item.newsContext || null,
+        })),
+        summary: {
+          portfolioStrategyReturnPercent: strategyAverage,
+          buyHoldAveragePercent: successfulItems.length
+            ? successfulItems.reduce((sum, item) => sum + Number(item.buyHoldReturnPercent || 0), 0) / successfulItems.length
+            : 0,
+          benchmarkAveragePercent: successfulItems.length
+            ? successfulItems.reduce((sum, item) => sum + Number(item.benchmarkReturnPercent || 0), 0) / successfulItems.length
+            : 0,
+        },
+      });
+
+      return sendJson(res, 200, {
+        range,
+        settings,
+        items,
+        summary: {
+          portfolioStrategyReturnPercent: strategyAverage,
+          averageStrategyReturnPercent: strategyAverage,
+          averageBuyHoldReturnPercent: successfulItems.length
+            ? successfulItems.reduce((sum, item) => sum + Number(item.buyHoldReturnPercent || 0), 0) / successfulItems.length
+            : 0,
+          averageBenchmarkReturnPercent: successfulItems.length
+            ? successfulItems.reduce((sum, item) => sum + Number(item.benchmarkReturnPercent || 0), 0) / successfulItems.length
+            : 0,
+          winRatePercent: winRateAverage,
+          maxDrawdownPercent: drawdownMax,
+          bestSymbol: bestItem?.symbol || null,
+          worstSymbol: worstItem?.symbol || null,
+          aiSummary,
+        },
+        integrations: {
+          ollama: Boolean(trimTrailingSlash(OLLAMA_BASE_URL)),
+          firecrawl: isFirecrawlConfigured(),
+          engine: actualEngine,
+        },
+      });
     }
 
     if (req.method === 'POST' && url.pathname === '/api/zerodha/postback') {

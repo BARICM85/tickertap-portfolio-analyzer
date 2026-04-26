@@ -13,3 +13,15 @@ services:
         sync: false
       - key: FMP_API_BASE_URL
         value: https://financialmodelingprep.com/stable
+      - key: BACKTEST_RANGE
+        value: 2y
+      - key: BACKTEST_FAST_WINDOW
+        value: 20
+      - key: BACKTEST_SLOW_WINDOW
+        value: 50
+      - key: BACKTEST_INITIAL_CASH
+        value: 100000
+      - key: BACKTEST_COMMISSION_BPS
+        value: 0
+      - key: BACKTEST_BENCHMARK_SYMBOL
+        value: ^NSEI

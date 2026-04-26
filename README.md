@@ -5,6 +5,7 @@ Standalone React + Vite stock portfolio analyzing app with Firebase Google login
 ## Features
 
 - Dashboard with allocation, P&L, market movers, portfolio pulse, and watchlist triggers
+- Dashboard backtest lane that runs each holding one by one and compares strategy return against buy-and-hold
 - Portfolio workspace with manual entry, CSV/JSON import, JSON export, search, and Zerodha holdings sync
 - Stock detail view with valuation snapshot, thesis notes, scenario planning, and generated analysis
 - Risk lab with concentration checks, sector exposure, beta view, and rebalance suggestions
@@ -26,7 +27,7 @@ npm install
 copy .env.example .env
 ```
 
-3. Fill in your Firebase and Zerodha keys in `.env`
+3. Fill in your Firebase, Zerodha, backtest, Ollama, and optional Firecrawl keys in `.env`
 
 4. Start the frontend
 
@@ -94,6 +95,25 @@ For hosting:
 - Set `ZERODHA_API_KEY` and `ZERODHA_API_SECRET`
 - Whitelist `http://localhost:8000/api/zerodha/callback` as the redirect URL in your Kite Connect app
 - Keep the backend running before clicking Connect Zerodha in the app
+
+## Backtesting and local AI
+
+The dashboard now includes a per-stock backtest section. It uses the backend history feed, runs each holding sequentially, and optionally asks Ollama for a short portfolio summary.
+
+Useful backend env vars:
+
+- `BACKTEST_RANGE=2y`
+- `BACKTEST_FAST_WINDOW=20`
+- `BACKTEST_SLOW_WINDOW=50`
+- `BACKTEST_INITIAL_CASH=100000`
+- `BACKTEST_COMMISSION_BPS=0`
+- `BACKTEST_BENCHMARK_SYMBOL=^NSEI`
+- `BACKTEST_ENGINE=vectorbt` for local Python VectorBT runs, or `js` for the built-in fallback
+- `PYTHON_BIN=python3` or your VectorBT-enabled interpreter path
+- `OLLAMA_BASE_URL=http://127.0.0.1:11434` for local AI summaries
+- `OLLAMA_MODEL=llama3.2:3b`
+- `FIRECRAWL_API_BASE_URL=http://localhost:3002` if you run Firecrawl locally
+- `FIRECRAWL_API_KEY=` if your Firecrawl setup requires one
 
 ## Android app
 
@@ -204,6 +224,12 @@ This project already includes [render.yaml](./render.yaml).
   - `ZERODHA_SESSION_PATH=server/.zerodha-session.json`
   - `ZERODHA_SERVER_PORT=10000`
   - `FMP_API_BASE_URL=https://financialmodelingprep.com/stable`
+  - `BACKTEST_RANGE=2y`
+  - `BACKTEST_FAST_WINDOW=20`
+  - `BACKTEST_SLOW_WINDOW=50`
+  - `BACKTEST_INITIAL_CASH=100000`
+  - `BACKTEST_COMMISSION_BPS=0`
+  - `BACKTEST_BENCHMARK_SYMBOL=^NSEI`
 
 `FMP_API_KEY` powers the stock fundamentals and news-backed fields on the stock detail page:
 
