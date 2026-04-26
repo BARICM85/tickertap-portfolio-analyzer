@@ -15,6 +15,8 @@ const DEFAULT_RULES = {
   period3: 50,
 };
 
+const MAX_CUSTOM_SYMBOLS = 165;
+
 function normalizeSymbolValue(value = '') {
   return String(value || '').trim().toUpperCase();
 }
@@ -198,7 +200,7 @@ export default function CustomTestingSection({ stocks = [] }) {
     }))
     .filter((stock) => stock.symbol);
 
-  const activeSymbols = (uploadedSymbols.length ? uploadedSymbols : portfolioSymbols).slice(0, 20);
+  const activeSymbols = (uploadedSymbols.length ? uploadedSymbols : portfolioSymbols).slice(0, MAX_CUSTOM_SYMBOLS);
 
   const customTestMutation = useMutation({
     mutationFn: () => runCustomTesting({
