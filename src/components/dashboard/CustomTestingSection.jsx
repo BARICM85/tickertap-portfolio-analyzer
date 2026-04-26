@@ -144,6 +144,7 @@ function buildCustomTestWorkbook(data, activeSymbols = [], uploadedFileName = ''
     Passed: item.error ? '' : Boolean(item.passed),
     Reason: item.error || item.reason || '',
     'Latest Date': item.latestDate || '',
+    'Last Crossover Date': item.lastCrossoverDate || '',
     'Latest Close': item.latestClose ?? '',
     'History Points': item.historyPoints ?? '',
     'SMA 1': item.smaValues?.[0]?.value ?? '',
@@ -219,6 +220,10 @@ function ResultRow({ item }) {
           <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
             <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Rule date</p>
             <p className="mt-2 text-sm font-semibold text-slate-900">{item.latestDate || '--'}</p>
+          </div>
+          <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+            <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Last crossover</p>
+            <p className="mt-2 text-sm font-semibold text-slate-900">{item.lastCrossoverDate || '--'}</p>
           </div>
           <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
             <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Match</p>

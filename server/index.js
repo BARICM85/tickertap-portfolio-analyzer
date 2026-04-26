@@ -1452,6 +1452,17 @@ function compareWithOperator(left, operator, right) {
   return Math.abs(left - right) <= tolerance;
 }
 
+function evaluateRuleStateAtIndex(smaSeries = [], operators = [], index = -1) {
+  if (index < 0) return null;
+
+  const values = smaSeries.map((series) => series[index]);
+  if (!values.every((value) => Number.isFinite(value))) return null;
+
+  const firstComparison = compareWithOperator(values[0], operators[0], values[1]);
+  const secondComparison = compareWithOperator(values[1], operators[1], values[2]);
+  return firstComparison && secondComparison;
+}
+
 function evaluateCustomSmaRule(points = [], periods = [], operators = []) {
   const closes = points.map((point) => Number(point.close || 0));
   const normalizedPeriods = [
@@ -1476,11 +1487,25 @@ function evaluateCustomSmaRule(points = [], periods = [], operators = []) {
     }
   }
 
+  let lastCrossoverIndex = -1;
+  let previousState = null;
+  for (let index = 0; index < points.length; index += 1) {
+    const state = evaluateRuleStateAtIndex(smaSeries, normalizedOperators, index);
+    if (state === null) continue;
+
+    if (previousState === false && state === true) {
+      lastCrossoverIndex = index;
+    }
+
+    previousState = state;
+  }
+
   if (latestIndex < 0) {
     return {
       passed: false,
       latestIndex: -1,
       latestDate: null,
+      lastCrossoverDate: null,
       latestClose: null,
       smaValues: [],
       expression: formatSmaRuleLabel(normalizedPeriods, normalizedOperators),
@@ -1498,6 +1523,7 @@ function evaluateCustomSmaRule(points = [], periods = [], operators = []) {
     passed,
     latestIndex,
     latestDate: points[latestIndex]?.date || null,
+    lastCrossoverDate: lastCrossoverIndex >= 0 ? points[lastCrossoverIndex]?.date || null : null,
     latestClose,
     smaValues,
     expression: formatSmaRuleLabel(normalizedPeriods, normalizedOperators),
