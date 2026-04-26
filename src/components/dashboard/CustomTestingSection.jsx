@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { AlertCircle, CheckCircle2, Loader2, Play, RotateCcw, Upload } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Download, Loader2, Play, RotateCcw, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -111,6 +111,64 @@ function dedupeSymbols(rows = []) {
   });
 
   return [...indexed.values()];
+}
+
+function buildCustomTestWorkbook(data, activeSymbols = [], uploadedFileName = '', settings = {}) {
+  const summary = data?.summary || {};
+  const rules = data?.rules || {};
+  const items = Array.isArray(data?.items) ? data.items : [];
+  const successfulItems = items.filter((item) => !item.error);
+  const failedItems = items.filter((item) => item.error);
+
+  const summaryRows = [
+    { field: 'Strategy', value: data?.strategy || 'sma' },
+    { field: 'Range', value: settings.range || data?.range || '--' },
+    { field: 'Rule', value: rules.expression || '--' },
+    { field: 'Symbols loaded', value: activeSymbols.length },
+    { field: 'Source file', value: uploadedFileName || 'Portfolio holdings' },
+    { field: 'Tested symbols', value: items.length },
+    { field: 'Successful symbols', value: successfulItems.length },
+    { field: 'Failed symbols', value: failedItems.length },
+    { field: 'Pass count', value: summary.passCount ?? '--' },
+    { field: 'Fail count', value: summary.failCount ?? '--' },
+    { field: 'Pass rate %', value: Number(summary.passRatePercent || 0).toFixed(2) },
+    { field: 'Best symbol', value: summary.bestSymbol || '--' },
+    { field: 'Worst symbol', value: summary.worstSymbol || '--' },
+    { field: 'Generated at', value: new Date().toISOString() },
+  ];
+
+  const resultRows = items.map((item) => ({
+    Symbol: item.symbol || '',
+    Name: item.name || '',
+    Exchange: item.exchange || 'NSE',
+    Passed: item.error ? '' : Boolean(item.passed),
+    Reason: item.error || item.reason || '',
+    'Latest Date': item.latestDate || '',
+    'Latest Close': item.latestClose ?? '',
+    'History Points': item.historyPoints ?? '',
+    'SMA 1': item.smaValues?.[0]?.value ?? '',
+    'SMA 2': item.smaValues?.[1]?.value ?? '',
+    'SMA 3': item.smaValues?.[2]?.value ?? '',
+    Error: item.error || '',
+  }));
+
+  const failedRows = failedItems.map((item) => ({
+    Symbol: item.symbol || '',
+    Name: item.name || '',
+    Exchange: item.exchange || 'NSE',
+    Error: item.error || '',
+    'History Points': item.historyPoints ?? '',
+  }));
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Summary');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(resultRows), 'Results');
+
+  if (failedRows.length) {
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(failedRows), 'Failed');
+  }
+
+  return workbook;
 }
 
 function RuleSummary({ periods = [], operators = [] }) {
@@ -265,6 +323,22 @@ export default function CustomTestingSection({ stocks = [] }) {
     }
   };
 
+  const exportResults = () => {
+    if (!data?.items?.length) {
+      toast.error('Run a custom test before exporting.');
+      return;
+    }
+
+    try {
+      const workbook = buildCustomTestWorkbook(data, activeSymbols, uploadedFileName, { range });
+      const filename = `custom-testing-${(data?.strategy || 'sma').toLowerCase()}-${new Date().toISOString().replace(/[:.]/g, '-')}.xlsx`;
+      XLSX.writeFile(workbook, filename);
+      toast.success('Custom testing export downloaded.');
+    } catch {
+      toast.error('Could not create the Excel export.');
+    }
+  };
+
   const resetImportedSymbols = () => {
     setUploadedSymbols([]);
     setUploadedFileName('');
@@ -312,6 +386,15 @@ export default function CustomTestingSection({ stocks = [] }) {
           >
             {customTestMutation.isPending ? <Loader2 className="animate-spin" /> : <Play />}
             {customTestMutation.isPending ? 'Testing' : 'Run test'}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={exportResults}
+            disabled={!data?.items?.length}
+            className="rounded-2xl border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+          >
+            <Download />
+            Export XLSX
           </Button>
         </div>
       </div>
