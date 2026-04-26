@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Activity, BarChart3, Briefcase, Cpu, Eye, LogOut, MonitorPlay, RefreshCw, Shield, TrendingUp, UserCircle2 } from 'lucide-react';
+import { BarChart3, Briefcase, Eye, LogOut, RefreshCw, Shield, TrendingUp, UserCircle2 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { toast } from 'sonner';
@@ -15,9 +15,6 @@ const NAV_ITEMS = [
   { path: '/Dashboard', label: 'Dashboard', icon: BarChart3 },
   { path: '/Portfolio', label: 'Portfolio', icon: Briefcase },
   { path: '/RiskAnalysis', label: 'Risk Lab', icon: Shield },
-  { path: '/RrgLab', label: 'RRG Lab', icon: Activity },
-  { path: '/TradingTerminal', label: 'Trading Terminal', icon: MonitorPlay },
-  { path: '/AlgoTrading', label: 'Algo Trading', icon: Cpu },
   { path: '/Watchlist', label: 'Watchlist', icon: Eye },
 ];
 

@@ -5,14 +5,11 @@ import { queryClientInstance } from '@/lib/query-client';
 import PageNotFound from '@/lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import AppLayout from '@/components/layout/AppLayout';
-import AlgoTrading from '@/pages/AlgoTrading';
 import Dashboard from '@/pages/Dashboard';
 import OptionChainPage from '@/pages/OptionChainPage';
 import Portfolio from '@/pages/Portfolio';
-import RrgLab from '@/pages/RrgLab';
 import StockDetail from '@/pages/StockDetail';
 import RiskAnalysis from '@/pages/RiskAnalysis';
-import TradingTerminal from '@/pages/TradingTerminal';
 import WatchlistPage from '@/pages/WatchlistPage';
 
 function AuthenticatedApp() {
@@ -32,12 +29,9 @@ function AuthenticatedApp() {
       <Route element={<AppLayout />}>
         <Route path="/Dashboard" element={<Dashboard />} />
         <Route path="/Portfolio" element={<Portfolio />} />
-        <Route path="/RrgLab" element={<RrgLab />} />
         <Route path="/OptionChain" element={<OptionChainPage />} />
         <Route path="/StockDetail" element={<StockDetail />} />
         <Route path="/RiskAnalysis" element={<RiskAnalysis />} />
-        <Route path="/TradingTerminal" element={<TradingTerminal />} />
-        <Route path="/AlgoTrading" element={<AlgoTrading />} />
         <Route path="/Watchlist" element={<WatchlistPage />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
