@@ -6,8 +6,13 @@ server/.zerodha-session.web.json
 server/.zerodha-instruments-cache.json
 server/.zerodha-instruments-cache*.json
 server/.zerodha-postbacks.log
+__pycache__/
+*.pyc
 .npm-cache
 .env.*
+!.env.example
+!.env.local.example
+!.env.web.example
 
 # Logs
 /logs
