@@ -225,7 +225,7 @@ export default function Dashboard() {
             },
             {
               title: 'Trading workflow',
-              text: 'Use Trading Terminal only after checking broker sync and risk state so execution does not feel detached from the portfolio.',
+              text: 'Review broker sync and risk state before placing any order so execution stays tied to the portfolio.',
             },
           ].map((item) => (
             <div key={item.title} className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
