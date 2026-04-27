@@ -26,9 +26,10 @@ export default function MarketHistoryChart({ stock }) {
           toolbar_bg="#04070c"
           enable_publishing={false}
           withdateranges={true}
+          hide_top_toolbar={false}
           hide_side_toolbar={false}
           allow_symbol_change={true}
-          container_id="tradingview_advanced_chart"
+          save_image={true}
           studies={[
             "MASimple@tv-basicstudies",
             "BollingerBands@tv-basicstudies",
