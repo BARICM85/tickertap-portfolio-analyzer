@@ -135,18 +135,17 @@ export default function MarketHistoryChart({ stock }) {
     const macdSignalSeries = macdChart.addSeries(LineSeries, { color: '#F59E0B', lineWidth: 1 });
     macdSignalSeries.setData(macdData.signalLine);
 
-    // SYNC LOGIC
-    let isSyncing = false;
-    const syncCharts = (timeScale, otherCharts) => {
-      timeScale.subscribeVisibleTimeRangeChange((range) => {
-        if (isSyncing || !range) return;
-        isSyncing = true;
-        otherCharts.forEach(c => c.timeScale().setVisibleRange(range));
-        isSyncing = false;
+    // SYNC LOGIC - Logical Range Sync (Most precise)
+    const syncCharts = (master, slaves) => {
+      master.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+        if (!range) return;
+        slaves.forEach(slave => {
+          slave.timeScale().setVisibleLogicalRange(range);
+        });
       });
     };
 
-    syncCharts(mainChart.timeScale(), [rsiChart, macdChart]);
+    syncCharts(mainChart, [rsiChart, macdChart]);
 
     // Crosshair Sync with precise positioning
     mainChart.subscribeCrosshairMove((param) => {
@@ -155,6 +154,7 @@ export default function MarketHistoryChart({ stock }) {
         macdChart.clearCrosshairPosition();
         return;
       }
+      // Force crosshair to same time index
       rsiChart.setCrosshairPosition(0, param.time, rsiSeries);
       macdChart.setCrosshairPosition(0, param.time, macdLineSeries);
     });
@@ -162,19 +162,35 @@ export default function MarketHistoryChart({ stock }) {
     mainChart.timeScale().fitContent();
 
     const handleResize = () => {
+      if (!mainChartContainerRef.current) return;
       const width = mainChartContainerRef.current.clientWidth;
+      
       mainChart.applyOptions({ width });
       rsiChart.applyOptions({ width });
       macdChart.applyOptions({ width });
+      
+      // Re-sync width after resize
+      const priceWidth = mainChart.priceScale('right').width();
+      if (priceWidth > 0) {
+        rsiChart.priceScale('right').applyOptions({ minimumWidth: priceWidth });
+        macdChart.priceScale('right').applyOptions({ minimumWidth: priceWidth });
+      }
     };
 
     window.addEventListener('resize', handleResize);
     
-    // Force initial alignment
-    setTimeout(() => {
+    // Initial alignment sequence
+    const initSync = () => {
       handleResize();
-      mainChart.timeScale().fitContent();
-    }, 200);
+      const logicalRange = mainChart.timeScale().getVisibleLogicalRange();
+      if (logicalRange) {
+        rsiChart.timeScale().setVisibleLogicalRange(logicalRange);
+        macdChart.timeScale().setVisibleLogicalRange(logicalRange);
+      }
+    };
+
+    setTimeout(initSync, 100);
+    setTimeout(initSync, 500); // Second pass to catch late rendering
 
     return () => {
       window.removeEventListener('resize', handleResize);
