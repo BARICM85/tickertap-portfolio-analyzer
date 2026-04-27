@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { createChart } from 'lightweight-charts';
+import { createChart, CandlestickSeries, HistogramSeries, LineSeries } from 'lightweight-charts';
 import { useQuery } from '@tanstack/react-query';
 import { getBrokerApiBase } from '@/lib/brokerClient';
 import { calculateBollingerBands, calculateMACD, calculateRSI, calculateSMA } from '@/utils/indicators';
@@ -65,7 +65,7 @@ export default function MarketHistoryChart({ stock }) {
     const commonOptions = {
       layout: { background: { color: '#04070c' }, textColor: '#d1d4dc' },
       grid: { vertLines: { color: 'rgba(42, 46, 57, 0.2)' }, horzLines: { color: 'rgba(42, 46, 57, 0.2)' } },
-      timeScale: { visible: false }, // Hide time scale for secondary charts
+      timeScale: { visible: false },
     };
 
     // 1. Main Chart
@@ -75,36 +75,36 @@ export default function MarketHistoryChart({ stock }) {
       crosshair: { mode: 0 },
     });
 
-    const candleSeries = mainChart.addCandlestickSeries({ upColor: '#26a69a', downColor: '#ef5350' });
+    const candleSeries = mainChart.addSeries(CandlestickSeries, { upColor: '#26a69a', downColor: '#ef5350' });
     candleSeries.setData(chartData);
 
-    const volumeSeries = mainChart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: '' });
+    const volumeSeries = mainChart.addSeries(HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: '' });
     volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
     volumeSeries.setData(chartData.map(d => ({
       time: d.time, value: d.volume, color: d.close >= d.open ? 'rgba(38, 166, 154, 0.3)' : 'rgba(239, 83, 80, 0.3)'
     })));
 
-    mainChart.addLineSeries({ color: '#22D3EE', lineWidth: 1 }).setData(calculateSMA(chartData, 20));
-    mainChart.addLineSeries({ color: '#C084FC', lineWidth: 1 }).setData(calculateSMA(chartData, 50));
-    mainChart.addLineSeries({ color: '#34D399', lineWidth: 1 }).setData(calculateSMA(chartData, 200));
+    mainChart.addSeries(LineSeries, { color: '#22D3EE', lineWidth: 1 }).setData(calculateSMA(chartData, 20));
+    mainChart.addSeries(LineSeries, { color: '#C084FC', lineWidth: 1 }).setData(calculateSMA(chartData, 50));
+    mainChart.addSeries(LineSeries, { color: '#34D399', lineWidth: 1 }).setData(calculateSMA(chartData, 200));
 
     const bb = calculateBollingerBands(chartData);
-    mainChart.addLineSeries({ color: 'rgba(148, 163, 184, 0.3)', lineWidth: 1, lineStyle: 2 }).setData(bb.upper);
-    mainChart.addLineSeries({ color: 'rgba(148, 163, 184, 0.3)', lineWidth: 1, lineStyle: 2 }).setData(bb.lower);
+    mainChart.addSeries(LineSeries, { color: 'rgba(148, 163, 184, 0.3)', lineWidth: 1, lineStyle: 2 }).setData(bb.upper);
+    mainChart.addSeries(LineSeries, { color: 'rgba(148, 163, 184, 0.3)', lineWidth: 1, lineStyle: 2 }).setData(bb.lower);
 
     // 2. RSI Chart
     const rsiChart = createChart(rsiChartContainerRef.current, { ...commonOptions, height: 120 });
-    const rsiSeries = rsiChart.addLineSeries({ color: '#FB7185', lineWidth: 2 });
+    const rsiSeries = rsiChart.addSeries(LineSeries, { color: '#FB7185', lineWidth: 2 });
     rsiSeries.setData(calculateRSI(chartData));
-    rsiChart.addLineSeries({ color: 'rgba(255,255,255,0.1)', lineWidth: 1 }).setData(chartData.map(d => ({ time: d.time, value: 70 })));
-    rsiChart.addLineSeries({ color: 'rgba(255,255,255,0.1)', lineWidth: 1 }).setData(chartData.map(d => ({ time: d.time, value: 30 })));
+    rsiChart.addSeries(LineSeries, { color: 'rgba(255,255,255,0.1)', lineWidth: 1 }).setData(chartData.map(d => ({ time: d.time, value: 70 })));
+    rsiChart.addSeries(LineSeries, { color: 'rgba(255,255,255,0.1)', lineWidth: 1 }).setData(chartData.map(d => ({ time: d.time, value: 30 })));
 
     // 3. MACD Chart
     const macdChart = createChart(macdChartContainerRef.current, { ...commonOptions, height: 120 });
     const macd = calculateMACD(chartData);
-    macdChart.addHistogramSeries().setData(macd.histogram);
-    macdChart.addLineSeries({ color: '#22D3EE', lineWidth: 1 }).setData(macd.macdLine);
-    macdChart.addLineSeries({ color: '#F59E0B', lineWidth: 1 }).setData(macd.signalLine);
+    macdChart.addSeries(HistogramSeries).setData(macd.histogram);
+    macdChart.addSeries(LineSeries, { color: '#22D3EE', lineWidth: 1 }).setData(macd.macdLine);
+    macdChart.addSeries(LineSeries, { color: '#F59E0B', lineWidth: 1 }).setData(macd.signalLine);
 
     // Sync charts
     mainChart.timeScale().subscribeVisibleTimeRangeChange((range) => {
