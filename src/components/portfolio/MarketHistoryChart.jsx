@@ -1,5 +1,5 @@
 import React from 'react';
-import { AdvancedChart } from 'react-ts-tradingview-widgets';
+import { AdvancedRealTimeChart } from 'react-ts-tradingview-widgets';
 
 /**
  * MarketHistoryChart - Replaced custom Recharts implementation with the official
@@ -46,33 +46,19 @@ export default function MarketHistoryChart({ stock, onStockSelect }) {
 
         {/* The TradingView Widget */}
         <div className="h-[600px] w-full overflow-hidden rounded-[24px] border border-white/8 bg-[#04070c]">
-          <AdvancedChart
-            widgetProps={{
-              symbol: formattedSymbol,
-              theme: 'dark',
-              autosize: true,
-              interval: 'D',
-              timezone: 'Asia/Kolkata',
-              style: '1',
-              locale: 'en',
-              toolbar_bg: '#04070c',
-              enable_publishing: false,
-              withdateranges: true,
-              hide_side_toolbar: false,
-              allow_symbol_change: true,
-              details: true,
-              hotlist: true,
-              calendar: true,
-              show_popup_button: true,
-              popup_width: '1000',
-              popup_height: '650',
-              studies: [
-                'MASimple@tv-basicstudies',
-                'RSI@tv-basicstudies',
-                'MACD@tv-basicstudies'
-              ],
-              container_id: 'tradingview_advanced_chart'
-            }}
+          <AdvancedRealTimeChart
+            symbol={formattedSymbol}
+            theme="dark"
+            autosize
+            interval="D"
+            timezone="Asia/Kolkata"
+            style="1"
+            locale="en"
+            toolbar_bg="#04070c"
+            enable_publishing={false}
+            hide_side_toolbar={false}
+            allow_symbol_change={true}
+            container_id="tradingview_advanced_chart"
           />
         </div>
       </div>
