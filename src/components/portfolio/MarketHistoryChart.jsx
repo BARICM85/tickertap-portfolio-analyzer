@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createChart, CandlestickSeries, HistogramSeries, LineSeries } from 'lightweight-charts';
 import { useQuery } from '@tanstack/react-query';
 import { getBrokerApiBase } from '@/lib/brokerClient';
-import { calculateBollingerBands, calculateMACD, calculateRSI, calculateSMA } from '@/utils/indicators';
+import { calculateBollingerBands, calculateMACD, calculateRSI, calculateSMA, calculateEMA } from '@/utils/indicators';
 import { Loader2 } from 'lucide-react';
+import IndicatorSettings from './IndicatorSettings';
 
 const RANGE_OPTIONS = [
   { label: '1D', value: '1d' },
@@ -25,6 +26,16 @@ const INTERVAL_OPTIONS = [
   { label: '1W', value: '1w' },
 ];
 
+const DEFAULT_INDICATORS = {
+  sma20: { name: 'SMA 20', active: true, type: 'sma', period: 20, color: '#22D3EE', thickness: 1 },
+  sma50: { name: 'SMA 50', active: true, type: 'sma', period: 50, color: '#C084FC', thickness: 1 },
+  sma200: { name: 'SMA 200', active: true, type: 'sma', period: 200, color: '#34D399', thickness: 1 },
+  ema20: { name: 'EMA 20', active: false, type: 'ema', period: 20, color: '#F59E0B', thickness: 1 },
+  bb: { name: 'Bollinger Bands', active: true, type: 'bb', period: 20, stdDev: 2, color: 'rgba(148, 163, 184, 0.2)', thickness: 1 },
+  rsi: { name: 'RSI (Pane)', active: true, type: 'rsi', period: 14, color: '#FB7185', thickness: 2 },
+  macd: { name: 'MACD (Pane)', active: true, type: 'macd', fast: 12, slow: 26, signal: 9, color: '#22D3EE', thickness: 1 },
+};
+
 export default function MarketHistoryChart({ stock }) {
   const mainChartContainerRef = useRef(null);
   const rsiChartContainerRef = useRef(null);
@@ -32,6 +43,11 @@ export default function MarketHistoryChart({ stock }) {
   
   const [range, setRange] = useState('1d');
   const [interval, setInterval] = useState('5m');
+  const [indicators, setIndicators] = useState(() => {
+    const saved = localStorage.getItem('chart_indicators_config');
+    return saved ? JSON.parse(saved) : DEFAULT_INDICATORS;
+  });
+
   const apiBaseUrl = getBrokerApiBase();
 
   const { data, isLoading, isError, error } = useQuery({
@@ -46,6 +62,10 @@ export default function MarketHistoryChart({ stock }) {
       return response.json();
     },
   });
+
+  useEffect(() => {
+    localStorage.setItem('chart_indicators_config', JSON.stringify(indicators));
+  }, [indicators]);
 
   const chartData = useMemo(() => {
     if (!data?.points) return [];
@@ -68,14 +88,14 @@ export default function MarketHistoryChart({ stock }) {
       rightPriceScale: {
         borderColor: 'rgba(197, 203, 206, 0.1)',
         autoScale: true,
-        minimumWidth: 80, // FORCE identical width for all panes
+        minimumWidth: 80,
       },
       timeScale: { visible: false },
       handleScroll: false,
       handleScale: false,
     };
 
-    // 1. Main Chart
+    // 1. Initialize Main Chart
     const mainChart = createChart(mainChartContainerRef.current, {
       ...commonOptions,
       timeScale: { 
@@ -91,114 +111,93 @@ export default function MarketHistoryChart({ stock }) {
     });
 
     const candleSeries = mainChart.addSeries(CandlestickSeries, { 
-      upColor: '#26a69a', 
-      downColor: '#ef5350',
-      wickUpColor: '#26a69a',
-      wickDownColor: '#ef5350',
-      borderVisible: false,
+      upColor: '#26a69a', downColor: '#ef5350', wickUpColor: '#26a69a', wickDownColor: '#ef5350', borderVisible: false,
     });
     candleSeries.setData(chartData);
 
-    const volumeSeries = mainChart.addSeries(HistogramSeries, { 
-      priceFormat: { type: 'volume' }, 
-      priceScaleId: '', 
-    });
+    const volumeSeries = mainChart.addSeries(HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: '' });
     volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
     volumeSeries.setData(chartData.map(d => ({
       time: d.time, value: d.volume, color: d.close >= d.open ? 'rgba(38, 166, 154, 0.2)' : 'rgba(239, 83, 80, 0.2)'
     })));
 
-    mainChart.addSeries(LineSeries, { color: '#22D3EE', lineWidth: 1, crosshairMarkerVisible: false }).setData(calculateSMA(chartData, 20));
-    mainChart.addSeries(LineSeries, { color: '#C084FC', lineWidth: 1, crosshairMarkerVisible: false }).setData(calculateSMA(chartData, 50));
-    mainChart.addSeries(LineSeries, { color: '#34D399', lineWidth: 1, crosshairMarkerVisible: false }).setData(calculateSMA(chartData, 200));
-
-    const bb = calculateBollingerBands(chartData);
-    mainChart.addSeries(LineSeries, { color: 'rgba(148, 163, 184, 0.2)', lineWidth: 1, lineStyle: 2, crosshairMarkerVisible: false }).setData(bb.upper);
-    mainChart.addSeries(LineSeries, { color: 'rgba(148, 163, 184, 0.2)', lineWidth: 1, lineStyle: 2, crosshairMarkerVisible: false }).setData(bb.lower);
-
-    // 2. RSI Chart
-    const rsiChart = createChart(rsiChartContainerRef.current, { ...commonOptions, height: 120 });
-    const rsiSeries = rsiChart.addSeries(LineSeries, { color: '#FB7185', lineWidth: 2 });
-    rsiSeries.setData(calculateRSI(chartData));
+    // Overlay Indicators
+    if (indicators.sma20.active) mainChart.addSeries(LineSeries, { color: indicators.sma20.color, lineWidth: indicators.sma20.thickness, crosshairMarkerVisible: false }).setData(calculateSMA(chartData, indicators.sma20.period));
+    if (indicators.sma50.active) mainChart.addSeries(LineSeries, { color: indicators.sma50.color, lineWidth: indicators.sma50.thickness, crosshairMarkerVisible: false }).setData(calculateSMA(chartData, indicators.sma50.period));
+    if (indicators.sma200.active) mainChart.addSeries(LineSeries, { color: indicators.sma200.color, lineWidth: indicators.sma200.thickness, crosshairMarkerVisible: false }).setData(calculateSMA(chartData, indicators.sma200.period));
+    if (indicators.ema20.active) mainChart.addSeries(LineSeries, { color: indicators.ema20.color, lineWidth: indicators.ema20.thickness, crosshairMarkerVisible: false }).setData(calculateEMA(chartData, indicators.ema20.period));
     
-    // RSI Overbought/Oversold levels
-    rsiChart.addSeries(LineSeries, { color: 'rgba(255,255,255,0.05)', lineWidth: 1, crosshairMarkerVisible: false }).setData(chartData.map(d => ({ time: d.time, value: 70 })));
-    rsiChart.addSeries(LineSeries, { color: 'rgba(255,255,255,0.05)', lineWidth: 1, crosshairMarkerVisible: false }).setData(chartData.map(d => ({ time: d.time, value: 30 })));
+    if (indicators.bb.active) {
+      const bb = calculateBollingerBands(chartData, indicators.bb.period, indicators.bb.stdDev);
+      mainChart.addSeries(LineSeries, { color: indicators.bb.color, lineWidth: indicators.bb.thickness, lineStyle: 2, crosshairMarkerVisible: false }).setData(bb.upper);
+      mainChart.addSeries(LineSeries, { color: indicators.bb.color, lineWidth: indicators.bb.thickness, lineStyle: 2, crosshairMarkerVisible: false }).setData(bb.lower);
+    }
 
-    // 3. MACD Chart
-    const macdChart = createChart(macdChartContainerRef.current, { ...commonOptions, height: 140 });
-    const macdData = calculateMACD(chartData);
-    const macdHistSeries = macdChart.addSeries(HistogramSeries);
-    macdHistSeries.setData(macdData.histogram);
-    const macdLineSeries = macdChart.addSeries(LineSeries, { color: '#22D3EE', lineWidth: 1 });
-    macdLineSeries.setData(macdData.macdLine);
-    const macdSignalSeries = macdChart.addSeries(LineSeries, { color: '#F59E0B', lineWidth: 1 });
-    macdSignalSeries.setData(macdData.signalLine);
+    // 2. Initialize RSI Chart (If active)
+    let rsiChart = null;
+    let rsiSeries = null;
+    if (indicators.rsi.active && rsiChartContainerRef.current) {
+      rsiChart = createChart(rsiChartContainerRef.current, { ...commonOptions, height: 120 });
+      rsiSeries = rsiChart.addSeries(LineSeries, { color: indicators.rsi.color, lineWidth: indicators.rsi.thickness });
+      rsiSeries.setData(calculateRSI(chartData, indicators.rsi.period));
+      rsiChart.addSeries(LineSeries, { color: 'rgba(255,255,255,0.05)', lineWidth: 1, crosshairMarkerVisible: false }).setData(chartData.map(d => ({ time: d.time, value: 70 })));
+      rsiChart.addSeries(LineSeries, { color: 'rgba(255,255,255,0.05)', lineWidth: 1, crosshairMarkerVisible: false }).setData(chartData.map(d => ({ time: d.time, value: 30 })));
+    }
 
-    // SYNC LOGIC - Precise Logical Range Sync
+    // 3. Initialize MACD Chart (If active)
+    let macdChart = null;
+    let macdLineSeries = null;
+    if (indicators.macd.active && macdChartContainerRef.current) {
+      macdChart = createChart(macdChartContainerRef.current, { ...commonOptions, height: 140 });
+      const macdData = calculateMACD(chartData, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal);
+      macdChart.addSeries(HistogramSeries).setData(macdData.histogram);
+      macdLineSeries = macdChart.addSeries(LineSeries, { color: indicators.macd.color, lineWidth: indicators.macd.thickness });
+      macdLineSeries.setData(macdData.macdLine);
+      macdChart.addSeries(LineSeries, { color: '#F59E0B', lineWidth: 1 }).setData(macdData.signalLine);
+    }
+
+    // Multi-Pane SYNC
     const timeScale = mainChart.timeScale();
-    const rsiTimeScale = rsiChart.timeScale();
-    const macdTimeScale = macdChart.timeScale();
-
     timeScale.subscribeVisibleLogicalRangeChange((range) => {
       if (!range) return;
-      rsiTimeScale.setVisibleLogicalRange(range);
-      macdTimeScale.setVisibleLogicalRange(range);
+      if (rsiChart) rsiChart.timeScale().setVisibleLogicalRange(range);
+      if (macdChart) macdChart.timeScale().setVisibleLogicalRange(range);
     });
 
-    // Crosshair Sync
     mainChart.subscribeCrosshairMove((param) => {
       if (!param.time) {
-        rsiChart.clearCrosshairPosition();
-        macdChart.clearCrosshairPosition();
+        if (rsiChart) rsiChart.clearCrosshairPosition();
+        if (macdChart) macdChart.clearCrosshairPosition();
         return;
       }
-      rsiChart.setCrosshairPosition(0, param.time, rsiSeries);
-      macdChart.setCrosshairPosition(0, param.time, macdLineSeries);
+      if (rsiChart) rsiChart.setCrosshairPosition(0, param.time, rsiSeries);
+      if (macdChart) macdChart.setCrosshairPosition(0, param.time, macdLineSeries);
     });
-
-    // Add scroll/pan to bottom charts too, but let them sync back (bi-directional sync is tricky, so let's stick to master-slave for now but ensure it doesn't block)
-    
-    mainChart.timeScale().fitContent();
 
     const handleResize = () => {
       if (!mainChartContainerRef.current) return;
       const width = mainChartContainerRef.current.clientWidth;
-      
       mainChart.applyOptions({ width });
-      rsiChart.applyOptions({ width });
-      macdChart.applyOptions({ width });
+      if (rsiChart) rsiChart.applyOptions({ width });
+      if (macdChart) macdChart.applyOptions({ width });
       
-      // Force Price Scale Sync
       const priceWidth = mainChart.priceScale('right').width();
       if (priceWidth > 0) {
-        rsiChart.priceScale('right').applyOptions({ minimumWidth: priceWidth, position: 'right' });
-        macdChart.priceScale('right').applyOptions({ minimumWidth: priceWidth, position: 'right' });
+        if (rsiChart) rsiChart.priceScale('right').applyOptions({ minimumWidth: priceWidth });
+        if (macdChart) macdChart.priceScale('right').applyOptions({ minimumWidth: priceWidth });
       }
     };
 
     window.addEventListener('resize', handleResize);
-    
-    // Snapping Logic
-    const snap = () => {
-      handleResize();
-      const logicalRange = timeScale.getVisibleLogicalRange();
-      if (logicalRange) {
-        rsiTimeScale.setVisibleLogicalRange(logicalRange);
-        macdTimeScale.setVisibleLogicalRange(logicalRange);
-      }
-    };
-
-    setTimeout(snap, 100);
-    setTimeout(snap, 1000); // Guard against slow rendering
+    setTimeout(handleResize, 100);
 
     return () => {
       window.removeEventListener('resize', handleResize);
       mainChart.remove();
-      rsiChart.remove();
-      macdChart.remove();
+      if (rsiChart) rsiChart.remove();
+      if (macdChart) macdChart.remove();
     };
-  }, [chartData]);
+  }, [chartData, indicators]);
 
   return (
     <div className="flex h-full w-full flex-col bg-[#04070c] overflow-hidden select-none">
@@ -220,6 +219,9 @@ export default function MarketHistoryChart({ stock }) {
             </button>
           ))}
         </div>
+        
+        <IndicatorSettings indicators={indicators} onUpdate={setIndicators} />
+
         <div className="ml-auto flex items-center gap-3">
           {isLoading && <Loader2 className="h-4 w-4 animate-spin text-amber-300" />}
           <div className="flex flex-col items-end">
@@ -230,37 +232,40 @@ export default function MarketHistoryChart({ stock }) {
       </div>
 
       <div className="flex-grow flex flex-col overflow-hidden">
-        {/* Main Chart */}
-        <div className="relative flex-grow min-h-[300px]">
+        <div className="relative flex-grow min-h-[200px]">
           <div ref={mainChartContainerRef} className="absolute inset-0" />
         </div>
         
-        {/* RSI Section */}
-        <div className="shrink-0 border-t border-white/10">
-          <div className="bg-[#0b1119]/50 px-4 py-0.5 flex justify-between items-center border-b border-white/5">
-            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">RSI (14)</span>
+        {indicators.rsi.active && (
+          <div className="shrink-0 border-t border-white/10">
+            <div className="bg-[#0b1119]/50 px-4 py-0.5 flex justify-between items-center border-b border-white/5">
+              <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">RSI ({indicators.rsi.period})</span>
+            </div>
+            <div ref={rsiChartContainerRef} className="h-[120px]" />
           </div>
-          <div ref={rsiChartContainerRef} className="h-[120px]" />
-        </div>
+        )}
 
-        {/* MACD Section */}
-        <div className="shrink-0 border-t border-white/10">
-          <div className="bg-[#0b1119]/50 px-4 py-0.5 flex justify-between items-center border-b border-white/5">
-            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">MACD (12, 26, 9)</span>
+        {indicators.macd.active && (
+          <div className="shrink-0 border-t border-white/10">
+            <div className="bg-[#0b1119]/50 px-4 py-0.5 flex justify-between items-center border-b border-white/5">
+              <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">MACD ({indicators.macd.fast}, {indicators.macd.slow}, {indicators.macd.signal})</span>
+            </div>
+            <div ref={macdChartContainerRef} className="h-[140px]" />
           </div>
-          <div ref={macdChartContainerRef} className="h-[120px]" />
-        </div>
+        )}
       </div>
 
       {/* Legend Footer */}
       <div className="flex items-center justify-between border-t border-white/10 bg-[#0b1119] px-4 py-1.5 text-[10px] text-slate-500">
-        <div className="flex gap-4">
-          <span className="flex items-center gap-1.5"><div className="h-2 w-2 rounded-full bg-[#22D3EE]" /> SMA 20</span>
-          <span className="flex items-center gap-1.5"><div className="h-2 w-2 rounded-full bg-[#C084FC]" /> SMA 50</span>
-          <span className="flex items-center gap-1.5"><div className="h-2 w-2 rounded-full bg-[#34D399]" /> SMA 200</span>
-          <span className="flex items-center gap-1.5"><div className="h-1 w-3 rounded-full bg-slate-500/50" /> Bollinger</span>
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          {Object.entries(indicators).filter(([_, c]) => c.active && c.type !== 'rsi' && c.type !== 'macd').map(([id, config]) => (
+            <span key={id} className="flex items-center gap-1.5">
+              <div className="h-2 w-2 rounded-full" style={{ backgroundColor: config.color }} /> 
+              {config.name} {config.period ? `(${config.period})` : ''}
+            </span>
+          ))}
         </div>
-        <div className="font-mono opacity-80">{range.toUpperCase()} • {interval}</div>
+        <div className="font-mono opacity-80 shrink-0">{range.toUpperCase()} • {interval}</div>
       </div>
     </div>
   );

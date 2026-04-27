@@ -9,7 +9,6 @@ export function calculateSMA(data, period) {
   const result = [];
   for (let i = 0; i < data.length; i++) {
     if (i < period - 1) {
-      // Keep empty slots to maintain index alignment
       result.push({ time: data[i].time });
       continue;
     }
@@ -20,6 +19,31 @@ export function calculateSMA(data, period) {
     result.push({ time: data[i].time, value: sum / period });
   }
   return result;
+}
+
+export function calculateEMA(data, period, key = 'close') {
+  const ema = [];
+  const k = 2 / (period + 1);
+  let prevEma = null;
+
+  for (let i = 0; i < data.length; i++) {
+    const val = data[i][key];
+    
+    if (val === undefined || val === null) {
+      ema.push({ time: data[i].time });
+      continue;
+    }
+
+    if (prevEma === null) {
+      prevEma = val;
+      ema.push({ time: data[i].time, value: val });
+    } else {
+      const currentEma = (val - prevEma) * k + prevEma;
+      ema.push({ time: data[i].time, value: currentEma });
+      prevEma = currentEma;
+    }
+  }
+  return ema;
 }
 
 export function calculateBollingerBands(data, period = 20, stdDev = 2) {
@@ -122,34 +146,5 @@ export function calculateMACD(data, fast = 12, slow = 26, signal = 9) {
     }
   }
 
-  // Refine signal line to be same length as data
-  const finalSignalLine = signalLine.map(d => ({ time: d.time, value: d.value }));
-
-  return { macdLine, signalLine: finalSignalLine, histogram };
-}
-
-function calculateEMA(data, period, key = 'close') {
-  const ema = [];
-  const k = 2 / (period + 1);
-  let prevEma = null;
-
-  for (let i = 0; i < data.length; i++) {
-    const val = data[i][key];
-    
-    if (val === undefined || val === null) {
-      ema.push({ time: data[i].time });
-      continue;
-    }
-
-    if (prevEma === null) {
-      // Find first valid value to start EMA
-      prevEma = val;
-      ema.push({ time: data[i].time, value: val });
-    } else {
-      const currentEma = (val - prevEma) * k + prevEma;
-      ema.push({ time: data[i].time, value: currentEma });
-      prevEma = currentEma;
-    }
-  }
-  return ema;
+  return { macdLine, signalLine, histogram };
 }
