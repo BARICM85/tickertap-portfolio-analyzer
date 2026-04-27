@@ -16,25 +16,25 @@ export default function MarketHistoryChart({ stock }) {
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-[#04070c]">
       <AdvancedRealTimeChart
-        symbol={formattedSymbol}
-        theme="dark"
-        autosize
-        interval="D"
-        timezone="Asia/Kolkata"
-        style="1"
-        locale="en"
-        toolbar_bg="#04070c"
-        enable_publishing={false}
-        hide_side_toolbar={false}
-        allow_symbol_change={true}
-        container_id="tradingview_advanced_chart"
-        studies={[
-          "MASimple@tv-basicstudies",
-          "BollingerBands@tv-basicstudies",
-          "RSI@tv-basicstudies",
-          "MACD@tv-basicstudies"
-        ]}
-      />
-    </div>
+          symbol={formattedSymbol}
+          theme="dark"
+          autosize
+          interval="D"
+          timezone="Asia/Kolkata"
+          style="1"
+          locale="en"
+          toolbar_bg="#04070c"
+          enable_publishing={false}
+          withdateranges={true}
+          hide_side_toolbar={false}
+          allow_symbol_change={true}
+          container_id="tradingview_advanced_chart"
+          studies={[
+            "MASimple@tv-basicstudies",
+            "BollingerBands@tv-basicstudies",
+            "RSI@tv-basicstudies",
+            "MACD@tv-basicstudies"
+          ]}
+        />    </div>
   );
 }
