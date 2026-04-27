@@ -28,6 +28,12 @@ export default function MarketHistoryChart({ stock }) {
         hide_side_toolbar={false}
         allow_symbol_change={true}
         container_id="tradingview_advanced_chart"
+        studies={[
+          "MASimple@tv-basicstudies",
+          "BollingerBands@tv-basicstudies",
+          "RSI@tv-basicstudies",
+          "MACD@tv-basicstudies"
+        ]}
       />
     </div>
   );
