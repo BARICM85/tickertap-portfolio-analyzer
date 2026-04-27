@@ -64,14 +64,27 @@ export default function MarketHistoryChart({ stock }) {
 
     const commonOptions = {
       layout: { background: { color: '#04070c' }, textColor: '#d1d4dc' },
-      grid: { vertLines: { color: 'rgba(42, 46, 57, 0.2)' }, horzLines: { color: 'rgba(42, 46, 57, 0.2)' } },
+      grid: { vertLines: { color: 'rgba(42, 46, 57, 0.1)' }, horzLines: { color: 'rgba(42, 46, 57, 0.1)' } },
+      rightPriceScale: {
+        borderColor: 'rgba(197, 203, 206, 0.2)',
+        autoScale: true,
+      },
       timeScale: { visible: false },
+      handleScroll: false, // Disable independent scrolling by default
+      handleScale: false,
     };
 
     // 1. Main Chart
     const mainChart = createChart(mainChartContainerRef.current, {
       ...commonOptions,
-      timeScale: { borderColor: 'rgba(197, 203, 206, 0.8)', timeVisible: true },
+      timeScale: { 
+        visible: true, 
+        borderColor: 'rgba(197, 203, 206, 0.5)', 
+        timeVisible: true,
+        fixLeftEdge: true,
+      },
+      handleScroll: true, // Main chart drives interaction
+      handleScale: true,
       crosshair: { mode: 0 },
     });
 
@@ -106,10 +119,32 @@ export default function MarketHistoryChart({ stock }) {
     macdChart.addSeries(LineSeries, { color: '#22D3EE', lineWidth: 1 }).setData(macd.macdLine);
     macdChart.addSeries(LineSeries, { color: '#F59E0B', lineWidth: 1 }).setData(macd.signalLine);
 
-    // Sync charts
+    // CRITICAL FIX: Sync Right Price Scale Width
+    // This prevents charts from shifting left/right when price labels have different widths
+    const syncPriceScaleWidth = () => {
+      const width = mainChart.priceScale('right').width();
+      if (width > 0) {
+        rsiChart.priceScale('right').applyOptions({ minimumWidth: width });
+        macdChart.priceScale('right').applyOptions({ minimumWidth: width });
+      }
+    };
+
+    // Sync Time Range
     mainChart.timeScale().subscribeVisibleTimeRangeChange((range) => {
       rsiChart.timeScale().setVisibleRange(range);
       macdChart.timeScale().setVisibleRange(range);
+      syncPriceScaleWidth();
+    });
+
+    // Crosshair Sync
+    mainChart.subscribeCrosshairMove((param) => {
+      if (!param.time) {
+        rsiChart.clearCrosshairPosition();
+        macdChart.clearCrosshairPosition();
+        return;
+      }
+      rsiChart.setCrosshairPosition(0, param.time, rsiSeries);
+      macdChart.setCrosshairPosition(0, param.time, macd.histogram[0]);
     });
 
     mainChart.timeScale().fitContent();
@@ -119,9 +154,17 @@ export default function MarketHistoryChart({ stock }) {
       mainChart.applyOptions({ width });
       rsiChart.applyOptions({ width });
       macdChart.applyOptions({ width });
+      syncPriceScaleWidth();
     };
 
     window.addEventListener('resize', handleResize);
+    
+    // Initial sync
+    setTimeout(() => {
+      syncPriceScaleWidth();
+      mainChart.timeScale().fitContent();
+    }, 100);
+
     return () => {
       window.removeEventListener('resize', handleResize);
       mainChart.remove();
@@ -131,13 +174,13 @@ export default function MarketHistoryChart({ stock }) {
   }, [chartData]);
 
   return (
-    <div className="flex h-full w-full flex-col bg-[#04070c] overflow-hidden">
+    <div className="flex h-full w-full flex-col bg-[#04070c] overflow-hidden select-none">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-4 border-b border-white/10 bg-[#0b1119] px-4 py-2">
+      <div className="flex flex-wrap items-center gap-4 border-b border-white/10 bg-[#0b1119] px-4 py-2 z-10">
         <div className="flex items-center gap-1 rounded-lg bg-white/5 p-1">
           {INTERVAL_OPTIONS.map((opt) => (
             <button key={opt.value} onClick={() => setInterval(opt.value)}
-              className={`rounded px-2 py-1 text-xs font-medium transition ${interval === opt.value ? 'bg-amber-300 text-slate-950' : 'text-slate-400 hover:text-white'}`}>
+              className={`rounded px-2.5 py-1 text-xs font-medium transition ${interval === opt.value ? 'bg-amber-300 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}>
               {opt.label}
             </button>
           ))}
@@ -145,34 +188,52 @@ export default function MarketHistoryChart({ stock }) {
         <div className="flex items-center gap-1 rounded-lg bg-white/5 p-1">
           {RANGE_OPTIONS.map((opt) => (
             <button key={opt.value} onClick={() => setRange(opt.value)}
-              className={`rounded px-2 py-1 text-xs font-medium transition ${range === opt.value ? 'bg-white/20 text-white' : 'text-slate-400 hover:text-white'}`}>
+              className={`rounded px-2.5 py-1 text-xs font-medium transition ${range === opt.value ? 'bg-white/20 text-white' : 'text-slate-400 hover:text-white'}`}>
               {opt.label}
             </button>
           ))}
         </div>
         <div className="ml-auto flex items-center gap-3">
           {isLoading && <Loader2 className="h-4 w-4 animate-spin text-amber-300" />}
-          <span className="text-xs font-semibold text-amber-200">{stock.symbol}</span>
+          <div className="flex flex-col items-end">
+            <span className="text-sm font-bold text-amber-200 leading-none">{stock.symbol}</span>
+            <span className="text-[9px] uppercase tracking-wider text-slate-500 mt-1">{stock.exchange || 'NSE'} Real-time</span>
+          </div>
         </div>
       </div>
 
-      <div className="flex-grow flex flex-col overflow-y-auto">
-        <div ref={mainChartContainerRef} className="flex-grow min-h-[400px]" />
-        <div className="h-px bg-white/10" />
-        <div className="bg-[#0b1119] px-4 py-1 text-[10px] text-slate-500 uppercase tracking-widest">RSI (14)</div>
-        <div ref={rsiChartContainerRef} className="h-[120px] shrink-0" />
-        <div className="h-px bg-white/10" />
-        <div className="bg-[#0b1119] px-4 py-1 text-[10px] text-slate-500 uppercase tracking-widest">MACD (12, 26, 9)</div>
-        <div ref={macdChartContainerRef} className="h-[120px] shrink-0" />
+      <div className="flex-grow flex flex-col overflow-hidden">
+        {/* Main Chart */}
+        <div className="relative flex-grow min-h-[300px]">
+          <div ref={mainChartContainerRef} className="absolute inset-0" />
+        </div>
+        
+        {/* RSI Section */}
+        <div className="shrink-0 border-t border-white/10">
+          <div className="bg-[#0b1119]/50 px-4 py-0.5 flex justify-between items-center border-b border-white/5">
+            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">RSI (14)</span>
+          </div>
+          <div ref={rsiChartContainerRef} className="h-[120px]" />
+        </div>
+
+        {/* MACD Section */}
+        <div className="shrink-0 border-t border-white/10">
+          <div className="bg-[#0b1119]/50 px-4 py-0.5 flex justify-between items-center border-b border-white/5">
+            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">MACD (12, 26, 9)</span>
+          </div>
+          <div ref={macdChartContainerRef} className="h-[120px]" />
+        </div>
       </div>
 
+      {/* Legend Footer */}
       <div className="flex items-center justify-between border-t border-white/10 bg-[#0b1119] px-4 py-1.5 text-[10px] text-slate-500">
         <div className="flex gap-4">
           <span className="flex items-center gap-1.5"><div className="h-2 w-2 rounded-full bg-[#22D3EE]" /> SMA 20</span>
           <span className="flex items-center gap-1.5"><div className="h-2 w-2 rounded-full bg-[#C084FC]" /> SMA 50</span>
           <span className="flex items-center gap-1.5"><div className="h-2 w-2 rounded-full bg-[#34D399]" /> SMA 200</span>
+          <span className="flex items-center gap-1.5"><div className="h-1 w-3 rounded-full bg-slate-500/50" /> Bollinger</span>
         </div>
-        <div>Zerodha Real-time • {range.toUpperCase()} / {interval}</div>
+        <div className="font-mono opacity-80">{range.toUpperCase()} • {interval}</div>
       </div>
     </div>
   );
