@@ -1,11 +1,10 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ExternalLink } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import MarketHistoryChart from '@/components/portfolio/MarketHistoryChart';
-import { Button } from '@/components/ui/button';
-import { derivePortfolioAnalytics, formatCurrency, formatPercent } from '@/lib/portfolioAnalytics';
+import { derivePortfolioAnalytics } from '@/lib/portfolioAnalytics';
 import { getStockProfile } from '@/lib/marketData';
 
 export default function StockChartPage() {
@@ -38,60 +37,43 @@ export default function StockChartPage() {
 
   if (!stock) {
     return (
-      <div className="space-y-6">
-        <div className="rounded-[32px] border border-white/10 bg-[#0b1624]/90 p-8 text-center">
-          <p className="text-lg text-white">Holding not found.</p>
-          <Link to="/Portfolio" className="mt-4 inline-flex text-amber-300">Back to portfolio</Link>
-        </div>
+      <div className="flex h-screen w-screen flex-col items-center justify-center bg-[#07111c] text-center">
+        <p className="text-lg text-white">Holding not found.</p>
+        <Link to="/Portfolio" className="mt-4 inline-flex text-amber-300">Back to portfolio</Link>
       </div>
     );
   }
 
   return (
-    <div className="space-y-3">
-      <section className="rounded-[26px] border border-white/10 bg-[#0b1624]/90 px-4 py-3 shadow-[0_16px_48px_rgba(0,0,0,0.18)]">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-start gap-4">
-            <Link to={stockFromPortfolio ? `/StockDetail?id=${stock.id}` : '/Portfolio'} className="rounded-2xl border border-white/10 bg-white/5 p-2.5 text-slate-300 transition hover:bg-white/10 hover:text-white">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-            <div>
-              <div className="flex items-center gap-3">
-                <div className="rounded-[22px] bg-amber-300/15 px-3 py-2 text-sm font-semibold text-amber-200">{stock.symbol}</div>
-                <div>
-                  <h1 className="text-2xl font-semibold tracking-tight text-white">{stock.name}</h1>
-                  <p className="mt-0.5 text-xs text-slate-400">{stock.sector} | {stock.exchange}</p>
-                </div>
-              </div>
-              <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-400">
-                <span>Current {formatCurrency(stock.current_price)}</span>
-                <span>P&L {formatPercent(stock.pnlPercent)}</span>
-                <span>Allocation {stock.allocation.toFixed(1)}%</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Button asChild variant="outline" className="rounded-2xl border-cyan-300/30 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/20">
-              <Link to={stockFromPortfolio ? `/OptionChain?id=${stock.id}` : `/OptionChain?symbol=${stock.symbol}`} target="_blank" rel="noreferrer">
-                <ExternalLink className="h-4 w-4" />
-                Open Option Chain
-              </Link>
-            </Button>
-            <Button asChild variant="outline" className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10">
-              <Link to={stockFromPortfolio ? `/StockDetail?id=${stock.id}` : '/Portfolio'}>
-                <ExternalLink className="h-4 w-4" />
-                {stockFromPortfolio ? 'Back to details' : 'Back to portfolio'}
-              </Link>
-            </Button>
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#04070c]">
+      {/* Minimalistic Header */}
+      <header className="flex items-center justify-between border-b border-white/10 bg-[#0b1119] px-4 py-3">
+        <div className="flex items-center gap-4">
+          <Link
+            to="/Portfolio"
+            className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-300 transition hover:bg-white/10 hover:text-white"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span>Back to Portfolio</span>
+          </Link>
+          <div className="h-4 w-px bg-white/10" />
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-amber-200">{stock.symbol}</span>
+            <span className="text-xs text-slate-400">{stock.name}</span>
           </div>
         </div>
-      </section>
+        <div className="hidden text-xs text-slate-500 sm:block">
+          TradingView Professional Terminal
+        </div>
+      </header>
 
-      <MarketHistoryChart
-        stock={stock}
-        onStockSelect={(item) => navigate(`/StockChart?symbol=${encodeURIComponent(item.symbol)}`)}
-      />
+      {/* Full-Height Chart Area */}
+      <main className="flex-grow overflow-hidden">
+        <MarketHistoryChart
+          stock={stock}
+          onStockSelect={(item) => navigate(`/StockChart?symbol=${encodeURIComponent(item.symbol)}`)}
+        />
+      </main>
     </div>
   );
 }

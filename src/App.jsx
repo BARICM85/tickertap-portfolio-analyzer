@@ -32,10 +32,10 @@ function AuthenticatedApp() {
         <Route path="/Portfolio" element={<Portfolio />} />
         <Route path="/OptionChain" element={<OptionChainPage />} />
         <Route path="/StockDetail" element={<StockDetail />} />
-        <Route path="/StockChart" element={<StockChartPage />} />
         <Route path="/RiskAnalysis" element={<RiskAnalysis />} />
         <Route path="/Watchlist" element={<WatchlistPage />} />
       </Route>
+      <Route path="/StockChart" element={<StockChartPage />} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
