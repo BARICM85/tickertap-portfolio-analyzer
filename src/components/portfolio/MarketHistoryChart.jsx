@@ -135,30 +135,30 @@ export default function MarketHistoryChart({ stock }) {
     const macdSignalSeries = macdChart.addSeries(LineSeries, { color: '#F59E0B', lineWidth: 1 });
     macdSignalSeries.setData(macdData.signalLine);
 
-    // SYNC LOGIC - Logical Range Sync (Most precise)
-    const syncCharts = (master, slaves) => {
-      master.timeScale().subscribeVisibleLogicalRangeChange((range) => {
-        if (!range) return;
-        slaves.forEach(slave => {
-          slave.timeScale().setVisibleLogicalRange(range);
-        });
-      });
-    };
+    // SYNC LOGIC - Precise Logical Range Sync
+    const timeScale = mainChart.timeScale();
+    const rsiTimeScale = rsiChart.timeScale();
+    const macdTimeScale = macdChart.timeScale();
 
-    syncCharts(mainChart, [rsiChart, macdChart]);
+    timeScale.subscribeVisibleLogicalRangeChange((range) => {
+      if (!range) return;
+      rsiTimeScale.setVisibleLogicalRange(range);
+      macdTimeScale.setVisibleLogicalRange(range);
+    });
 
-    // Crosshair Sync with precise positioning
+    // Crosshair Sync
     mainChart.subscribeCrosshairMove((param) => {
       if (!param.time) {
         rsiChart.clearCrosshairPosition();
         macdChart.clearCrosshairPosition();
         return;
       }
-      // Force crosshair to same time index
       rsiChart.setCrosshairPosition(0, param.time, rsiSeries);
       macdChart.setCrosshairPosition(0, param.time, macdLineSeries);
     });
 
+    // Add scroll/pan to bottom charts too, but let them sync back (bi-directional sync is tricky, so let's stick to master-slave for now but ensure it doesn't block)
+    
     mainChart.timeScale().fitContent();
 
     const handleResize = () => {
@@ -169,28 +169,28 @@ export default function MarketHistoryChart({ stock }) {
       rsiChart.applyOptions({ width });
       macdChart.applyOptions({ width });
       
-      // Re-sync width after resize
+      // Force Price Scale Sync
       const priceWidth = mainChart.priceScale('right').width();
       if (priceWidth > 0) {
-        rsiChart.priceScale('right').applyOptions({ minimumWidth: priceWidth });
-        macdChart.priceScale('right').applyOptions({ minimumWidth: priceWidth });
+        rsiChart.priceScale('right').applyOptions({ minimumWidth: priceWidth, position: 'right' });
+        macdChart.priceScale('right').applyOptions({ minimumWidth: priceWidth, position: 'right' });
       }
     };
 
     window.addEventListener('resize', handleResize);
     
-    // Initial alignment sequence
-    const initSync = () => {
+    // Snapping Logic
+    const snap = () => {
       handleResize();
-      const logicalRange = mainChart.timeScale().getVisibleLogicalRange();
+      const logicalRange = timeScale.getVisibleLogicalRange();
       if (logicalRange) {
-        rsiChart.timeScale().setVisibleLogicalRange(logicalRange);
-        macdChart.timeScale().setVisibleLogicalRange(logicalRange);
+        rsiTimeScale.setVisibleLogicalRange(logicalRange);
+        macdTimeScale.setVisibleLogicalRange(logicalRange);
       }
     };
 
-    setTimeout(initSync, 100);
-    setTimeout(initSync, 500); // Second pass to catch late rendering
+    setTimeout(snap, 100);
+    setTimeout(snap, 1000); // Guard against slow rendering
 
     return () => {
       window.removeEventListener('resize', handleResize);
