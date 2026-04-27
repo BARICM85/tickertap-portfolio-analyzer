@@ -64,13 +64,14 @@ export default function MarketHistoryChart({ stock }) {
 
     const commonOptions = {
       layout: { background: { color: '#04070c' }, textColor: '#d1d4dc' },
-      grid: { vertLines: { color: 'rgba(42, 46, 57, 0.1)' }, horzLines: { color: 'rgba(42, 46, 57, 0.1)' } },
+      grid: { vertLines: { color: 'rgba(42, 46, 57, 0.05)' }, horzLines: { color: 'rgba(42, 46, 57, 0.05)' } },
       rightPriceScale: {
-        borderColor: 'rgba(197, 203, 206, 0.2)',
+        borderColor: 'rgba(197, 203, 206, 0.1)',
         autoScale: true,
+        minimumWidth: 80, // FORCE identical width for all panes
       },
       timeScale: { visible: false },
-      handleScroll: false, // Disable independent scrolling by default
+      handleScroll: false,
       handleScale: false,
     };
 
@@ -82,61 +83,72 @@ export default function MarketHistoryChart({ stock }) {
         borderColor: 'rgba(197, 203, 206, 0.5)', 
         timeVisible: true,
         fixLeftEdge: true,
+        shiftVisibleRangeOnNewBar: true,
       },
-      handleScroll: true, // Main chart drives interaction
+      handleScroll: true,
       handleScale: true,
       crosshair: { mode: 0 },
     });
 
-    const candleSeries = mainChart.addSeries(CandlestickSeries, { upColor: '#26a69a', downColor: '#ef5350' });
+    const candleSeries = mainChart.addSeries(CandlestickSeries, { 
+      upColor: '#26a69a', 
+      downColor: '#ef5350',
+      wickUpColor: '#26a69a',
+      wickDownColor: '#ef5350',
+      borderVisible: false,
+    });
     candleSeries.setData(chartData);
 
-    const volumeSeries = mainChart.addSeries(HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: '' });
+    const volumeSeries = mainChart.addSeries(HistogramSeries, { 
+      priceFormat: { type: 'volume' }, 
+      priceScaleId: '', 
+    });
     volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
     volumeSeries.setData(chartData.map(d => ({
-      time: d.time, value: d.volume, color: d.close >= d.open ? 'rgba(38, 166, 154, 0.3)' : 'rgba(239, 83, 80, 0.3)'
+      time: d.time, value: d.volume, color: d.close >= d.open ? 'rgba(38, 166, 154, 0.2)' : 'rgba(239, 83, 80, 0.2)'
     })));
 
-    mainChart.addSeries(LineSeries, { color: '#22D3EE', lineWidth: 1 }).setData(calculateSMA(chartData, 20));
-    mainChart.addSeries(LineSeries, { color: '#C084FC', lineWidth: 1 }).setData(calculateSMA(chartData, 50));
-    mainChart.addSeries(LineSeries, { color: '#34D399', lineWidth: 1 }).setData(calculateSMA(chartData, 200));
+    mainChart.addSeries(LineSeries, { color: '#22D3EE', lineWidth: 1, crosshairMarkerVisible: false }).setData(calculateSMA(chartData, 20));
+    mainChart.addSeries(LineSeries, { color: '#C084FC', lineWidth: 1, crosshairMarkerVisible: false }).setData(calculateSMA(chartData, 50));
+    mainChart.addSeries(LineSeries, { color: '#34D399', lineWidth: 1, crosshairMarkerVisible: false }).setData(calculateSMA(chartData, 200));
 
     const bb = calculateBollingerBands(chartData);
-    mainChart.addSeries(LineSeries, { color: 'rgba(148, 163, 184, 0.3)', lineWidth: 1, lineStyle: 2 }).setData(bb.upper);
-    mainChart.addSeries(LineSeries, { color: 'rgba(148, 163, 184, 0.3)', lineWidth: 1, lineStyle: 2 }).setData(bb.lower);
+    mainChart.addSeries(LineSeries, { color: 'rgba(148, 163, 184, 0.2)', lineWidth: 1, lineStyle: 2, crosshairMarkerVisible: false }).setData(bb.upper);
+    mainChart.addSeries(LineSeries, { color: 'rgba(148, 163, 184, 0.2)', lineWidth: 1, lineStyle: 2, crosshairMarkerVisible: false }).setData(bb.lower);
 
     // 2. RSI Chart
     const rsiChart = createChart(rsiChartContainerRef.current, { ...commonOptions, height: 120 });
     const rsiSeries = rsiChart.addSeries(LineSeries, { color: '#FB7185', lineWidth: 2 });
     rsiSeries.setData(calculateRSI(chartData));
-    rsiChart.addSeries(LineSeries, { color: 'rgba(255,255,255,0.1)', lineWidth: 1 }).setData(chartData.map(d => ({ time: d.time, value: 70 })));
-    rsiChart.addSeries(LineSeries, { color: 'rgba(255,255,255,0.1)', lineWidth: 1 }).setData(chartData.map(d => ({ time: d.time, value: 30 })));
+    
+    // RSI Overbought/Oversold levels
+    rsiChart.addSeries(LineSeries, { color: 'rgba(255,255,255,0.05)', lineWidth: 1, crosshairMarkerVisible: false }).setData(chartData.map(d => ({ time: d.time, value: 70 })));
+    rsiChart.addSeries(LineSeries, { color: 'rgba(255,255,255,0.05)', lineWidth: 1, crosshairMarkerVisible: false }).setData(chartData.map(d => ({ time: d.time, value: 30 })));
 
     // 3. MACD Chart
-    const macdChart = createChart(macdChartContainerRef.current, { ...commonOptions, height: 120 });
-    const macd = calculateMACD(chartData);
-    macdChart.addSeries(HistogramSeries).setData(macd.histogram);
-    macdChart.addSeries(LineSeries, { color: '#22D3EE', lineWidth: 1 }).setData(macd.macdLine);
-    macdChart.addSeries(LineSeries, { color: '#F59E0B', lineWidth: 1 }).setData(macd.signalLine);
+    const macdChart = createChart(macdChartContainerRef.current, { ...commonOptions, height: 140 });
+    const macdData = calculateMACD(chartData);
+    const macdHistSeries = macdChart.addSeries(HistogramSeries);
+    macdHistSeries.setData(macdData.histogram);
+    const macdLineSeries = macdChart.addSeries(LineSeries, { color: '#22D3EE', lineWidth: 1 });
+    macdLineSeries.setData(macdData.macdLine);
+    const macdSignalSeries = macdChart.addSeries(LineSeries, { color: '#F59E0B', lineWidth: 1 });
+    macdSignalSeries.setData(macdData.signalLine);
 
-    // CRITICAL FIX: Sync Right Price Scale Width
-    // This prevents charts from shifting left/right when price labels have different widths
-    const syncPriceScaleWidth = () => {
-      const width = mainChart.priceScale('right').width();
-      if (width > 0) {
-        rsiChart.priceScale('right').applyOptions({ minimumWidth: width });
-        macdChart.priceScale('right').applyOptions({ minimumWidth: width });
-      }
+    // SYNC LOGIC
+    let isSyncing = false;
+    const syncCharts = (timeScale, otherCharts) => {
+      timeScale.subscribeVisibleTimeRangeChange((range) => {
+        if (isSyncing || !range) return;
+        isSyncing = true;
+        otherCharts.forEach(c => c.timeScale().setVisibleRange(range));
+        isSyncing = false;
+      });
     };
 
-    // Sync Time Range
-    mainChart.timeScale().subscribeVisibleTimeRangeChange((range) => {
-      rsiChart.timeScale().setVisibleRange(range);
-      macdChart.timeScale().setVisibleRange(range);
-      syncPriceScaleWidth();
-    });
+    syncCharts(mainChart.timeScale(), [rsiChart, macdChart]);
 
-    // Crosshair Sync
+    // Crosshair Sync with precise positioning
     mainChart.subscribeCrosshairMove((param) => {
       if (!param.time) {
         rsiChart.clearCrosshairPosition();
@@ -144,7 +156,7 @@ export default function MarketHistoryChart({ stock }) {
         return;
       }
       rsiChart.setCrosshairPosition(0, param.time, rsiSeries);
-      macdChart.setCrosshairPosition(0, param.time, macd.histogram[0]);
+      macdChart.setCrosshairPosition(0, param.time, macdLineSeries);
     });
 
     mainChart.timeScale().fitContent();
@@ -154,16 +166,15 @@ export default function MarketHistoryChart({ stock }) {
       mainChart.applyOptions({ width });
       rsiChart.applyOptions({ width });
       macdChart.applyOptions({ width });
-      syncPriceScaleWidth();
     };
 
     window.addEventListener('resize', handleResize);
     
-    // Initial sync
+    // Force initial alignment
     setTimeout(() => {
-      syncPriceScaleWidth();
+      handleResize();
       mainChart.timeScale().fitContent();
-    }, 100);
+    }, 200);
 
     return () => {
       window.removeEventListener('resize', handleResize);
