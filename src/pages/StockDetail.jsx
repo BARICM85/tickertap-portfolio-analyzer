@@ -9,8 +9,6 @@ import { derivePortfolioAnalytics, formatCurrency, formatPercent } from '@/lib/p
 import { buildStockAdvancedMetrics, getSuggestedHistoryRange } from '@/lib/advancedAnalytics';
 import { getCompanyIntelligence, getLiveMarketHistory, getLiveMarketQuote } from '@/lib/brokerClient';
 
-const LIGHTWEIGHT_STUDY_APP_URL = 'https://lightweight-study-app.vercel.app';
-
 function Metric({ label, value, note }) {
   return (
     <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
@@ -253,10 +251,10 @@ export default function StockDetail() {
 
           <div className="flex flex-wrap gap-3">
             <Button asChild variant="outline" className="rounded-2xl border-cyan-300/30 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/20">
-              <a href={`${LIGHTWEIGHT_STUDY_APP_URL}?symbol=${encodeURIComponent(stock.symbol)}`} target="_blank" rel="noreferrer">
+              <Link to={`/StockChart?id=${stock.id}`}>
                 <BarChart3 className="h-4 w-4" />
                 View Chart
-              </a>
+              </Link>
             </Button>
             <Button asChild variant="outline" className="rounded-2xl border-amber-300/30 bg-amber-300/10 text-amber-100 hover:bg-amber-300/20">
               <Link to={`/OptionChain?id=${stock.id}`} target="_blank" rel="noreferrer">

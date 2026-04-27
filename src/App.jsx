@@ -9,6 +9,7 @@ import Dashboard from '@/pages/Dashboard';
 import OptionChainPage from '@/pages/OptionChainPage';
 import Portfolio from '@/pages/Portfolio';
 import StockDetail from '@/pages/StockDetail';
+import StockChartPage from '@/pages/StockChartPage';
 import RiskAnalysis from '@/pages/RiskAnalysis';
 import WatchlistPage from '@/pages/WatchlistPage';
 
@@ -31,6 +32,7 @@ function AuthenticatedApp() {
         <Route path="/Portfolio" element={<Portfolio />} />
         <Route path="/OptionChain" element={<OptionChainPage />} />
         <Route path="/StockDetail" element={<StockDetail />} />
+        <Route path="/StockChart" element={<StockChartPage />} />
         <Route path="/RiskAnalysis" element={<RiskAnalysis />} />
         <Route path="/Watchlist" element={<WatchlistPage />} />
       </Route>
