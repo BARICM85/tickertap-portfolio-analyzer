@@ -44,6 +44,61 @@ const FIRECRAWL_API_BASE_URL = env.FIRECRAWL_API_BASE_URL || '';
 const FIRECRAWL_API_KEY = env.FIRECRAWL_API_KEY || '';
 const TELEGRAM_BOT_TOKEN = env.TELEGRAM_BOT_TOKEN || '';
 const TELEGRAM_CHAT_ID = env.TELEGRAM_CHAT_ID || '';
+const ALERT_MONITOR_INTERVAL = 15 * 60 * 1000; // 15 minutes
+const sentAlertsCache = new Set();
+
+async function checkPortfolioAlerts() {
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
+
+  try {
+    const session = await readSession();
+    if (!session?.access_token) return;
+
+    const data = await kiteRequest('/portfolio/holdings');
+    const holdings = data?.data || [];
+    if (!holdings.length) return;
+
+    for (const holding of holdings) {
+      try {
+        const symbol = holding.tradingsymbol;
+        const exchange = holding.exchange || 'NSE';
+        
+        // Condition 1: 52-Week High
+        const profile = await fetchFmp('profile', { symbol });
+        const yearHigh = profile?.[0]?.yearHigh;
+        const currentPrice = holding.last_price || profile?.[0]?.price;
+
+        if (yearHigh && currentPrice >= yearHigh) {
+          const alertKey = `${symbol}-52w-high-${Math.floor(Date.now() / (24 * 60 * 60 * 1000))}`;
+          if (!sentAlertsCache.has(alertKey)) {
+            await sendTelegramMessage(`<b>🚀 52-Week High Alert</b>\n\nStock: <b>${symbol}</b>\nCurrent Price: ${currentPrice}\n52W High: ${yearHigh}\n\nSymbol is testing its annual peaks!`);
+            sentAlertsCache.add(alertKey);
+          }
+        }
+
+        // Condition 2: Price on 26/09/2025 (Reference Date)
+        // We use 2025 because 2026 is future in this context (Today is April 30, 2026)
+        const refDate = '2025-09-26';
+        const history = await fetchMarketHistory(symbol, '1y', '1d', exchange);
+        const refPoint = (history?.points || []).find(p => p.date === refDate);
+        const refHigh = refPoint?.high || refPoint?.close;
+
+        if (refHigh && currentPrice >= refHigh) {
+          const alertKey = `${symbol}-ref-date-${refDate}-${Math.floor(Date.now() / (24 * 60 * 60 * 1000))}`;
+          if (!sentAlertsCache.has(alertKey)) {
+            await sendTelegramMessage(`<b>📈 Historical Level Alert</b>\n\nStock: <b>${symbol}</b>\nCurrent Price: ${currentPrice}\nPrice on ${refDate}: ${refHigh}\n\nStock has reached or exceeded its level from ${refDate}.`);
+            sentAlertsCache.add(alertKey);
+          }
+        }
+      } catch (err) {
+        // Silent fail for individual stock errors
+      }
+    }
+  } catch (err) {
+    console.error('Alert worker error:', err);
+  }
+}
+
 const BACKTEST_RANGE = env.BACKTEST_RANGE || '2y';
 const BACKTEST_FAST_WINDOW = Math.max(2, Number(env.BACKTEST_FAST_WINDOW || 20));
 const BACKTEST_SLOW_WINDOW = Math.max(BACKTEST_FAST_WINDOW + 1, Number(env.BACKTEST_SLOW_WINDOW || 50));
@@ -2240,4 +2295,9 @@ server.listen(PORT, () => {
   console.log(`Broker server listening on http://localhost:${PORT}`);
   console.log(`Configured redirect URI: ${REDIRECT_URI}`);
   console.log('Session storage: file');
+
+  // Start background alert monitoring
+  setInterval(checkPortfolioAlerts, ALERT_MONITOR_INTERVAL);
+  // Run once on startup
+  setTimeout(checkPortfolioAlerts, 10000);
 });
