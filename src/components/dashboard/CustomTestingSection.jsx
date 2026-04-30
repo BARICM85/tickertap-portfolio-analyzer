@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { AlertCircle, CheckCircle2, Download, Loader2, Play, RotateCcw, Upload } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Download, Loader2, Play, RotateCcw, Send, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -261,6 +261,7 @@ export default function CustomTestingSection({ stocks = [] }) {
   const [period2, setPeriod2] = useState(DEFAULT_RULES.period2);
   const [operator2, setOperator2] = useState(DEFAULT_RULES.operator2);
   const [period3, setPeriod3] = useState(DEFAULT_RULES.period3);
+  const [telegramAlerts, setTelegramAlerts] = useState(false);
 
   const portfolioSymbols = stocks
     .map((stock) => ({
@@ -282,6 +283,7 @@ export default function CustomTestingSection({ stocks = [] }) {
       period2,
       operator2,
       period3,
+      telegramAlerts,
     }),
   });
 
@@ -398,6 +400,14 @@ export default function CustomTestingSection({ stocks = [] }) {
           >
             {customTestMutation.isPending ? <Loader2 className="animate-spin" /> : <Play />}
             {customTestMutation.isPending ? 'Testing' : 'Run test'}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setTelegramAlerts(!telegramAlerts)}
+            className={`rounded-2xl border-slate-200 ${telegramAlerts ? 'bg-cyan-50 text-cyan-700' : 'bg-white text-slate-700'} hover:bg-slate-50`}
+          >
+            <Send className={`h-4 w-4 ${telegramAlerts ? 'fill-cyan-700' : ''}`} />
+            {telegramAlerts ? 'Alerts ON' : 'Alerts OFF'}
           </Button>
           <Button
             variant="outline"

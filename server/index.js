@@ -42,6 +42,8 @@ const OLLAMA_BASE_URL = env.OLLAMA_BASE_URL || '';
 const OLLAMA_MODEL = env.OLLAMA_MODEL || 'llama3.2:3b';
 const FIRECRAWL_API_BASE_URL = env.FIRECRAWL_API_BASE_URL || '';
 const FIRECRAWL_API_KEY = env.FIRECRAWL_API_KEY || '';
+const TELEGRAM_BOT_TOKEN = env.TELEGRAM_BOT_TOKEN || '';
+const TELEGRAM_CHAT_ID = env.TELEGRAM_CHAT_ID || '';
 const BACKTEST_RANGE = env.BACKTEST_RANGE || '2y';
 const BACKTEST_FAST_WINDOW = Math.max(2, Number(env.BACKTEST_FAST_WINDOW || 20));
 const BACKTEST_SLOW_WINDOW = Math.max(BACKTEST_FAST_WINDOW + 1, Number(env.BACKTEST_SLOW_WINDOW || 50));
@@ -375,6 +377,29 @@ function summarizeCorporateActions(items = []) {
 
 function isFirecrawlConfigured() {
   return Boolean(FIRECRAWL_API_KEY || /localhost|127\.0\.0\.1/i.test(FIRECRAWL_API_BASE_URL));
+}
+
+async function sendTelegramMessage(text = '') {
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID || !text) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: TELEGRAM_CHAT_ID,
+        text,
+        parse_mode: 'HTML',
+      }),
+    });
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Telegram send failed:', error);
+    return null;
+  }
 }
 
 async function fetchFmp(path, params = {}) {
@@ -1982,6 +2007,23 @@ const server = createServer(async (req, res) => {
       const passRatePercent = successfulItems.length ? (passCount / successfulItems.length) * 100 : 0;
       const bestItem = successfulItems.find((item) => item.passed) || null;
       const worstItem = successfulItems.find((item) => !item.passed) || null;
+
+      if (body.telegramAlerts && TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
+        const passedSymbols = successfulItems.filter((i) => i.passed).map((i) => i.symbol);
+        if (passedSymbols.length > 0) {
+          const message = [
+            '<b>🚀 SMA Alert Triggered</b>',
+            `Rule: ${formatSmaRuleLabel(periods, operators)}`,
+            `Range: ${range}`,
+            '',
+            `<b>Symbols Passed (${passedSymbols.length}):</b>`,
+            passedSymbols.map((s) => `• ${s}`).join('\n'),
+            '',
+            `<a href="${FRONTEND_URL}">View Dashboard</a>`,
+          ].join('\n');
+          await sendTelegramMessage(message);
+        }
+      }
 
       return sendJson(res, 200, {
         strategy: 'sma',
