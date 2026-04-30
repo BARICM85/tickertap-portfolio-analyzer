@@ -145,6 +145,7 @@ function buildCustomTestWorkbook(data, activeSymbols = [], uploadedFileName = ''
     Reason: item.error || item.reason || '',
     'Latest Date': item.latestDate || '',
     'Last Crossover Date': item.lastCrossoverDate || '',
+    'Change since crossover %': item.priceChangeFromCrossoverPercent != null ? Number(item.priceChangeFromCrossoverPercent).toFixed(2) : '',
     'Latest Close': item.latestClose ?? '',
     'History Points': item.historyPoints ?? '',
     'SMA 1': item.smaValues?.[0]?.value ?? '',
@@ -224,6 +225,12 @@ function ResultRow({ item }) {
           <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
             <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Last crossover</p>
             <p className="mt-2 text-sm font-semibold text-slate-900">{item.lastCrossoverDate || '--'}</p>
+          </div>
+          <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+            <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Change</p>
+            <p className={`mt-2 text-sm font-semibold ${item.priceChangeFromCrossoverPercent > 0 ? 'text-emerald-600' : item.priceChangeFromCrossoverPercent < 0 ? 'text-rose-600' : 'text-slate-900'}`}>
+              {item.priceChangeFromCrossoverPercent != null ? formatPercent(item.priceChangeFromCrossoverPercent) : '--'}
+            </p>
           </div>
           <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
             <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Match</p>

@@ -1519,11 +1519,18 @@ function evaluateCustomSmaRule(points = [], periods = [], operators = []) {
   const secondComparison = compareWithOperator(smaValues[1], normalizedOperators[1], smaValues[2]);
   const passed = firstComparison && secondComparison;
 
+  const crossoverPrice = lastCrossoverIndex >= 0 ? closes[lastCrossoverIndex] : null;
+  const priceChangeFromCrossoverPercent = crossoverPrice && latestClose
+    ? ((latestClose - crossoverPrice) / crossoverPrice) * 100
+    : null;
+
   return {
     passed,
     latestIndex,
     latestDate: points[latestIndex]?.date || null,
     lastCrossoverDate: lastCrossoverIndex >= 0 ? points[lastCrossoverIndex]?.date || null : null,
+    lastCrossoverPrice: crossoverPrice,
+    priceChangeFromCrossoverPercent,
     latestClose,
     smaValues,
     expression: formatSmaRuleLabel(normalizedPeriods, normalizedOperators),
