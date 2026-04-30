@@ -2214,6 +2214,43 @@ const server = createServer(async (req, res) => {
       }
     }
 
+    if (req.method === 'POST' && url.pathname === '/api/test/telegram-pl') {
+      try {
+        const data = await kiteRequest('/portfolio/holdings');
+        const holdings = data?.data || [];
+        if (!holdings.length) {
+          return sendJson(res, 400, { error: 'No holdings found to summarize.' });
+        }
+
+        let totalInvested = 0;
+        let totalCurrentValue = 0;
+        holdings.forEach((h) => {
+          totalInvested += h.quantity * h.average_price;
+          totalCurrentValue += h.quantity * h.last_price;
+        });
+
+        const totalPL = totalCurrentValue - totalInvested;
+        const plPercent = (totalPL / totalInvested) * 100;
+
+        const message = [
+          '<b>💰 Portfolio P&L Test Alert</b>',
+          '',
+          `Total Invested: ₹${totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`,
+          `Current Value: ₹${totalCurrentValue.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`,
+          '',
+          `<b>Overall P&L: ${totalPL >= 0 ? '🟢' : '🔴'} ₹${totalPL.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</b>`,
+          `Percentage: ${plPercent.toFixed(2)}%`,
+          '',
+          `<a href="${FRONTEND_URL}">Open Dashboard</a>`,
+        ].join('\n');
+
+        const result = await sendTelegramMessage(message);
+        return sendJson(res, 200, { success: true, telegramResponse: result });
+      } catch (error) {
+        return sendJson(res, 500, { error: error.message });
+      }
+    }
+
     if (req.method === 'GET' && url.pathname === '/api/zerodha/holdings') {
       const data = await kiteRequest('/portfolio/holdings');
       return sendJson(res, 200, data);
