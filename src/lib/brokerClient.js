@@ -39,7 +39,7 @@ function describeHttpFailure(status, path) {
 
 async function request(path, options = {}) {
   const brokerBase = getBrokerApiBase();
-  const defaultTimeoutMs = /onrender\.com/i.test(brokerBase) ? 15000 : 4500;
+  const defaultTimeoutMs = /onrender\.com/i.test(brokerBase) ? 30000 : 4500;
   const { timeoutMs = defaultTimeoutMs, ...fetchOptions } = options;
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const timeoutId = controller
@@ -117,7 +117,7 @@ export function runPortfolioBacktest(payload = {}) {
   return request('/api/backtest/portfolio', {
     method: 'POST',
     body: JSON.stringify(payload),
-    timeoutMs: 25000,
+    timeoutMs: 45000,
   });
 }
 
@@ -125,7 +125,7 @@ export function runCustomTesting(payload = {}) {
   return request('/api/backtest/custom', {
     method: 'POST',
     body: JSON.stringify(payload),
-    timeoutMs: 25000,
+    timeoutMs: 45000,
   });
 }
 
