@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { Loader2, LogOut, RefreshCw, ShieldCheck, Wallet } from 'lucide-react';
+import { Loader2, LogOut, RefreshCw, Send, ShieldCheck, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
-import { disconnectZerodha, getBrokerApiBase, getZerodhaHoldings, getZerodhaLoginUrl, getZerodhaPositions, getZerodhaRedirectUrl, getZerodhaStatus, mapZerodhaHoldingToPortfolio } from '@/lib/brokerClient';
+import { disconnectZerodha, getBrokerApiBase, getZerodhaHoldings, getZerodhaLoginUrl, getZerodhaPositions, getZerodhaRedirectUrl, getZerodhaStatus, mapZerodhaHoldingToPortfolio, testTelegramAlert } from '@/lib/brokerClient';
 
 export default function BrokerSyncPanel({ currentStocks = [], onSynced }) {
   const [status, setStatus] = useState(null);
@@ -151,6 +151,15 @@ export default function BrokerSyncPanel({ currentStocks = [], onSynced }) {
     }
   };
 
+  const onTestTelegram = async () => {
+    try {
+      await testTelegramAlert();
+      toast.success('Telegram P&L test message sent!');
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
   return (
     <section className="rounded-[32px] border border-white/10 bg-[#0b1624]/90 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.24)]">
       <div className="flex items-start justify-between gap-4">
@@ -217,8 +226,12 @@ export default function BrokerSyncPanel({ currentStocks = [], onSynced }) {
           {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
           Sync Holdings
         </Button>
+        <Button onClick={onTestTelegram} disabled={loading || !status?.connected} variant="outline" className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10">
+          <Send className="h-4 w-4" />
+          Test Telegram
+        </Button>
         <Button onClick={disconnect} disabled={loading || disconnecting || !status?.connected} variant="outline" className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10">
-          {disconnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
+          <LogOut className="h-4 w-4" />
           Disconnect
         </Button>
       </div>

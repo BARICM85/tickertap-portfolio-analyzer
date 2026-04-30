@@ -113,6 +113,10 @@ export function disconnectZerodha() {
   return request('/api/zerodha/disconnect', { method: 'POST' });
 }
 
+export function testTelegramAlert() {
+  return request('/api/test/telegram-pl', { method: 'POST' });
+}
+
 export function runPortfolioBacktest(payload = {}) {
   return request('/api/backtest/portfolio', {
     method: 'POST',
